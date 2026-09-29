@@ -63,6 +63,7 @@ set(BARE_METAL_FLAGS
 )
 
 add_subdirectory(minilibc)
+add_subdirectory(guest_example)
 
 add_executable(microvisor.elf src/startup.S src/main.cpp src/exceptions.S src/mmu.S src/world_switch.S
     src/timer.S)
@@ -88,6 +89,15 @@ target_link_libraries(microvisor.elf PRIVATE
     jplcz_reloco::reloco
     minilibc
 )
+
+# Embed the guest_example payload (see guest_example/CMakeLists.txt) as a
+# plain externally-generated object file directly into microvisor.elf.
+set_source_files_properties(${GUEST_EXAMPLE_BLOB_OBJECT} PROPERTIES
+    EXTERNAL_OBJECT TRUE
+    GENERATED TRUE
+)
+target_sources(microvisor.elf PRIVATE ${GUEST_EXAMPLE_BLOB_OBJECT})
+add_dependencies(microvisor.elf guest_example_blob)
 
 add_custom_command(TARGET microvisor.elf POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary microvisor.elf microvisor.bin

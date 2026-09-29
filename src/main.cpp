@@ -31,11 +31,18 @@
 
 #include <microvisor/boot.hpp>
 
+#include <cstring>
+
 extern "C"
 {
     extern uint8_t _start[]; // Now resolved to 0x40010000
     extern uint8_t __bss_end[];
     extern uint8_t __stack_top[];
+
+    // The guest_example payload (see guest_example/), flattened to a raw
+    // binary and embedded into this executable by objcopy at link time.
+    extern const uint8_t _binary_guest_example_bin_start[];
+    extern const uint8_t _binary_guest_example_bin_end[];
 }
 
 microvisor::page_array microvisor::g_pages;
@@ -220,43 +227,23 @@ int main()
     MICROFMT_LOG_INFO("Registering Console device...");
     my_vm->mmio().register_device(0x80001000, 0x1000, &g_console_dev);
 
-    // Write a tiny Guest Payload directly into the Host physical memory we assigned it.
+    // Write the Guest Payload into the Host physical memory we assigned it.
     // We mapped guest 0x40000000 -> the freshly-allocated `hpa_ram_paddr`.
     // Because Stage-1 maps the whole 128MB 1:1, we can write directly there!
+    // The payload itself is `guest_example.elf` (see guest_example/), built
+    // as its own freestanding C++23 executable and embedded into this
+    // binary at link time -- see the `_binary_guest_example_bin_*` symbols
+    // declared above -- instead of a hand-encoded array of raw instructions.
     MICROFMT_LOG_INFO("Writing Guest payload...");
-    uint32_t *guest_ram = reinterpret_cast<uint32_t *>(hpa_ram_paddr);
+    void *guest_ram = reinterpret_cast<void *>(hpa_ram_paddr);
+    const std::size_t guest_image_size =
+        static_cast<std::size_t>(_binary_guest_example_bin_end - _binary_guest_example_bin_start);
+    memcpy(guest_ram, _binary_guest_example_bin_start, guest_image_size);
 
-    // --- Instructions ---
-    guest_ram[0] = 0xE59F1028;  // 0x00: ldr  r1, [pc, #40]       -> 0x80000000 (Power Base)
-    guest_ram[1] = 0xE5910000;  // 0x04: ldr  r0, [r1, #0]        -> Read Power REG_STATUS ("VM01")
-    guest_ram[2] = 0xE59F2024;  // 0x08: ldr  r2, [pc, #36]       -> 0x80001000 (Console Base)
-    guest_ram[3] = 0xE28F3028;  // 0x0C: add  r3, pc, #40         -> Pointer to msg_str (at 0x3C)
-    guest_ram[4] = 0xE4D34001;  // 0x10: ldrb r4, [r3], #1        -> print_loop start
-    guest_ram[5] = 0xE3540000;  // 0x14: cmp  r4, #0
-    guest_ram[6] = 0x0A000001;  // 0x18: beq  +1 (to 0x24)        -> Jump to shutdown
-    guest_ram[7] = 0xE5824000;  // 0x1C: str  r4, [r2, #0]        -> Write char to Console REG_DATA
-    guest_ram[8] = 0xEAFFFFFA;  // 0x20: b    -6 (to 0x10)        -> Loop back
-    guest_ram[9] = 0xE59F400C;  // 0x24: ldr  r4, [pc, #12]       -> 0xCAFEBABE
-    guest_ram[10] = 0xE5814004; // 0x28: str  r4, [r1, #4]        -> Write to Power REG_HALT
-    guest_ram[11] = 0xEAFFFFFE; // 0x2C: b    .                   -> Infinite loop safety
-
-    // --- Literal Pool ---
-    guest_ram[12] = 0x80000000; // 0x30: Power device base
-    guest_ram[13] = 0x80001000; // 0x34: Console device base
-    guest_ram[14] = 0xCAFEBABE; // 0x38: Magic shutdown payload
-
-    // --- Packed String: "[VM 1] MMIO Bus Online!\r\n\0" ---
-    guest_ram[15] = 0x204D565B; // 0x3C: "[VM "
-    guest_ram[16] = 0x4D205D31; // 0x40: "1] M"
-    guest_ram[17] = 0x204F494D; // 0x44: "MIO "
-    guest_ram[18] = 0x20737542; // 0x48: "Bus "
-    guest_ram[19] = 0x696C6E4F; // 0x4C: "Onli"
-    guest_ram[20] = 0x0D21656E; // 0x50: "ne!\r"
-    guest_ram[21] = 0x0000000A; // 0x54: "\n\0\0\0"
-
-    // Flush cache lines for the 22 words (88 bytes)
+    // Flush cache lines covering the copied image.
     MICROFMT_LOG_INFO("Flushing Guest payload cache lines...");
-    microvisor::clear_cache(guest_ram, guest_ram + 22);
+    auto *guest_ram_words = reinterpret_cast<uint32_t *>(guest_ram);
+    microvisor::clear_cache(guest_ram_words, guest_ram_words + (guest_image_size + 3) / 4);
 
     // Configure VCPU to boot at the base of RAM in Supervisor mode
     my_vm->vcpu().pc = gpa_ram.value;
