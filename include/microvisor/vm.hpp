@@ -10,6 +10,7 @@
 #include "microvisor/lpae_stage2.hpp"
 #include "microvisor/vcpu.hpp"
 #include <microvisor/timer.hpp>
+#include <microvisor/sysregs.hpp>
 #include <microfmt/log/macros.hpp>
 #include <microvisor/mmio/bus.hpp>
 
@@ -32,6 +33,7 @@ namespace microvisor
 
         ~vm() noexcept
         {
+            microvisor::sysregs::invalidate_owner(m_vcpu);
             MICROFMT_LOG_INFO("VM destroyed");
         }
 
@@ -62,6 +64,7 @@ namespace microvisor
             m_vcpu.is_running = true;
 
             microvisor::timer::restore_guest_timer(m_vcpu);
+            microvisor::sysregs::restore_guest_sysregs(m_vcpu);
             microvisor::timer::arm_preemption_timer(slice_ms);
             hyp_set_vpidr(m_vcpu.vpidr);
             hyp_set_vmpidr(m_vcpu.vmpidr);
@@ -89,6 +92,7 @@ namespace microvisor
             hyp_set_hcr(old_hcr);
             microvisor::timer::disarm_preemption_timer();
             microvisor::timer::save_guest_timer(m_vcpu);
+            microvisor::sysregs::save_guest_sysregs(m_vcpu);
 
             m_vcpu.is_running = false;
 

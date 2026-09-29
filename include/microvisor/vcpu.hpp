@@ -9,6 +9,33 @@ namespace microvisor
 {
 
     /**
+     * @brief Shadow copy of the guest's (non-secure PL1/EL1) architectural
+     * system registers, used by microvisor/sysregs.hpp to save/restore
+     * guest MMU/exception-vector/thread-ID state across world switches
+     * between different VMs. See sysregs.hpp for the save/restore policy;
+     * this struct is just the storage.
+     */
+    struct guest_sysregs
+    {
+        uint32_t sctlr{0};
+        uint32_t actlr{0};
+        uint32_t cpacr{0};
+        uint32_t ttbr0{0};
+        uint32_t ttbr1{0};
+        uint32_t ttbcr{0};
+        uint32_t dacr{0};
+        uint32_t mair0{0};
+        uint32_t mair1{0};
+        uint32_t amair0{0};
+        uint32_t amair1{0};
+        uint32_t vbar{0};
+        uint32_t contextidr{0};
+        uint32_t tpidrurw{0};
+        uint32_t tpidruro{0};
+        uint32_t tpidrprw{0};
+    };
+
+    /**
      * @brief Holds the execution context of a Virtual CPU.
      */
     struct vcpu_context
@@ -31,6 +58,9 @@ namespace microvisor
         // Architectural Virtualization ID registers
         uint32_t vmpidr{0};
         uint32_t vpidr{0};
+
+        // Guest EL1 system register shadow (see microvisor/sysregs.hpp)
+        guest_sysregs sysregs{};
 
         bool is_running;
 

@@ -66,7 +66,7 @@ add_subdirectory(minilibc)
 add_subdirectory(guest_example)
 
 add_executable(microvisor.elf src/startup.S src/main.cpp src/exceptions.S src/mmu.S src/world_switch.S
-    src/timer.S)
+    src/timer.S src/sysregs.S)
 
 target_compile_options(microvisor.elf PRIVATE ${BARE_METAL_FLAGS})
 
