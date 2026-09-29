@@ -9,6 +9,9 @@
 // Export the entry point so the linker script finds it
 .global _start
 
+// Storage for the Device Tree Blob pointer (see g_dtb_ptr below)
+.global g_dtb_ptr
+
 // Import symbols defined in our linker.ld
 .extern __stack_top
 .extern __bss_start
@@ -23,6 +26,15 @@
 .section .text.boot, "ax"
 
 _start:
+    // Capture the Device Tree Blob pointer
+    // QEMU follows the ARM Linux kernel boot protocol: r0=0, r1=machine ID
+    // (or ~0 for DT-only boot), r2=physical address of the DTB. Stash r2 in
+    // a callee-preserved register now, before it is clobbered below, and
+    // require that a DTB was actually provided.
+    mov r6, r2
+    cmp r6, #0
+    beq .L_halt
+
     // Setup the Stack Pointer
     // QEMU drops us in with an undefined SP. We must set it immediately 
     // so we can make function calls and use local variables.
@@ -40,6 +52,12 @@ _start:
     str r2, [r0], #4   // Store 0 (r2) into address at r0, then increment r0 by 4
     b .L_bss_loop
 .L_bss_done:
+
+    // Store the DTB pointer we captured at boot into g_dtb_ptr, now that
+    // BSS has been zeroed (g_dtb_ptr lives in .bss, so this must happen
+    // after the zeroing loop above, not before).
+    ldr r0, =g_dtb_ptr
+    str r6, [r0]
 
     // Call C++ Global Constructors
     // Walk through the .init_array section and execute every function pointer.
@@ -68,6 +86,16 @@ _start:
 .L_halt:
     wfi                // Wait For Interrupt (puts CPU to sleep)
     b .L_halt
+
+// Storage for the captured DTB pointer, exposed to C++ as `void *g_dtb_ptr`
+.section .data.g_dtb_ptr
+.align 4
+g_dtb_ptr:
+    .type g_dtb_ptr, %object
+    .word 0
+    .size g_dtb_ptr, . - g_dtb_ptr
+
+.section .text.boot
 
 .globl __aeabi_unwind_cpp_pr0
 __aeabi_unwind_cpp_pr0:

@@ -26,6 +26,11 @@
 #include <microvisor/devices/power_device.hpp>
 #include <microvisor/devices/simple_console.hpp>
 
+#include <reloco/fdt_reader.hpp>
+#include <reloco/fdt_memory.hpp>
+
+#include <microvisor/boot.hpp>
+
 extern "C"
 {
     extern uint8_t _start[]; // Now resolved to 0x40010000
@@ -50,15 +55,41 @@ reloco::result<microvisor::memory_map> bootstrap_memory_regions() noexcept
 {
     microvisor::memory_map map;
 
-    // Declare total physical RAM (128 MB starting at 0x40000000)
-    auto res = map.total.try_add(0x40000000, 128 * 1024 * 1024);
+    if (g_dtb_ptr == nullptr)
+        return reloco::unexpected(reloco::error::invalid_argument);
+
+    MICROFMT_LOG_INFO("DTB @ {:#x}", reinterpret_cast<uintptr_t>(g_dtb_ptr));
+
+    const auto *dtb_bytes = reinterpret_cast<const std::byte *>(g_dtb_ptr);
+
+    // Peek at just the header to learn the blob's actual declared
+    // `totalsize`, rather than assuming a fixed upper bound.
+    auto size_res = reloco::fdt::fdt_reader::try_probe_size(
+        reloco::span<const std::byte>(dtb_bytes, 64));
+    if (!size_res)
+        return reloco::unexpected(size_res.error());
+
+    MICROFMT_LOG_INFO("DTB size {:#x}", *size_res);
+
+    auto reader_res = reloco::fdt::fdt_reader::try_create(
+        reloco::span<const std::byte>(dtb_bytes, *size_res));
+    if (!reader_res)
+        return reloco::unexpected(reader_res.error());
+
+    // Populate `total`/`free` straight from the devicetree's `/memory` and
+    // `/reserved-memory` nodes instead of a hardcoded 128 MB assumption.
+    auto res = reloco::fdt::try_extract_memory(*reader_res, map.total, map.free);
     if (!res)
         return reloco::unexpected(res.error());
 
-    // Clone the total map to the free map, then start punching holes
-    map.free = map.total.try_clone().unwrap();
+    map.total.iter().for_each([&](const auto &region)
+                              { MICROFMT_LOG_INFO("FDT TOTAL {:#x} -- {:#x}", region.base, region.base + region.size); });
+
+    map.free.iter().for_each([&](const auto &region)
+                             { MICROFMT_LOG_INFO("FDT FREE {:#x} -- {:#x}", region.base, region.base + region.size); });
 
     // Punch out the Boot ROM / FDT region
+    MICROFMT_LOG_INFO("Punching Boot ROM / FDT region {:#x} -- {:#x}", 0x40000000, 0x40000000 + 0x10000);
     res = map.free.try_subtract(0x40000000, 0x10000);
     if (!res)
         return reloco::unexpected(res.error());
@@ -66,6 +97,7 @@ reloco::result<microvisor::memory_map> bootstrap_memory_regions() noexcept
     // Punch out the Hypervisor Binary Footprint
     uintptr_t hv_start = reinterpret_cast<uintptr_t>(_start);
     uintptr_t hv_size = reinterpret_cast<uintptr_t>(__stack_top) - hv_start;
+    MICROFMT_LOG_INFO("Punching Hypervisor footprint {:#x} -- {:#x}", hv_start, hv_start + hv_size);
     res = map.free.try_subtract(hv_start, hv_size);
     if (!res)
         return reloco::unexpected(res.error());
