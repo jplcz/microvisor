@@ -5,6 +5,7 @@
 
 #include "microvisor/lpae_manager.hpp"
 #include "microvisor/lpae_stage1.hpp"
+#include "microvisor/memory_map.hpp"
 #include <reloco/optional.hpp>
 #include <reloco/phys_addr.hpp>
 
@@ -28,7 +29,7 @@ namespace microvisor
     // Global MMU Manager instance for EL2
     extern reloco::optional<lpae_manager> g_stage1_mmu;
 
-    inline void enable_hypervisor_mmu() noexcept
+    inline void enable_hypervisor_mmu(const memory_map &regions) noexcept
     {
         // Configure Memory Attributes (HMAIR0)
         // Index 1: Normal Memory (WBWA), Index 0: Device Memory (nGnRE)
@@ -54,22 +55,35 @@ namespace microvisor
                                  .raw;
         g_stage1_mmu->map_page_4k(uart_base, uart_desc).unwrap();
 
-        // Map the entire 128MB RAM using 2MB Blocks
-        // This provides the hypervisor 1:1 access to all memory (for VM allocation) with zero TLB pressure.
-        for (uint32_t offset = 0; offset < (128 * 1024 * 1024); offset += (2 * 1024 * 1024))
-        {
-            host_addr_t ram_block{0x40000000 + offset};
+        // Map every region of actual installed RAM (as discovered from the
+        // devicetree by `bootstrap_memory_regions`) using 2MB Blocks, instead
+        // of assuming a hardcoded 128MB @ 0x40000000 layout. This provides
+        // the hypervisor 1:1 access to all memory (for VM allocation) with
+        // zero TLB pressure.
+        constexpr uint32_t block_size = 2 * 1024 * 1024;
+        regions.total.iter().for_each(
+            [&](const auto &region)
+            {
+                // Block descriptors require 2MB-aligned addresses, so round
+                // the region's bounds out to the nearest enclosing blocks.
+                uint32_t base = region.base & ~(block_size - 1);
+                uint32_t end = (region.end() + block_size - 1) & ~(block_size - 1);
 
-            uint64_t ram_desc = lpae_stage1::descriptor::make_block(
-                                    ram_block,
-                                    lpae_stage1::ATTR_INDEX_NORMAL,
-                                    lpae_stage1::AP_RW,
-                                    false // Allow Execution (hypervisor text lives here)
-                                    )
-                                    .raw;
+                for (uint32_t offset = base; offset < end; offset += block_size)
+                {
+                    host_addr_t ram_block{offset};
 
-            g_stage1_mmu->map_block_2m(ram_block, ram_desc).unwrap();
-        }
+                    uint64_t ram_desc = lpae_stage1::descriptor::make_block(
+                                            ram_block,
+                                            lpae_stage1::ATTR_INDEX_NORMAL,
+                                            lpae_stage1::AP_RW,
+                                            false // Allow Execution (hypervisor text lives here)
+                                            )
+                                            .raw;
+
+                    g_stage1_mmu->map_block_2m(ram_block, ram_desc).unwrap();
+                }
+            });
 
         // 6. Activate MMU & Caches
         // The root_paddr() explicitly returns a typed table_addr_t[cite: 8], preventing mix-ups.

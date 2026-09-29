@@ -137,6 +137,7 @@ int main()
 
     MICROFMT_LOG_INFO("CPSR={:#x}", hyp_get_cpsr());
 
+    MICROFMT_LOG_INFO("Bootstrapping memory regions...");
     const auto regions = bootstrap_memory_regions().unwrap();
 
     regions.free.iter().for_each([&](const auto &region)
@@ -149,10 +150,12 @@ int main()
 
     MICROFMT_LOG_INFO("{} pages", microvisor::g_pages.size());
 
+    MICROFMT_LOG_INFO("Initializing buddy allocator...");
     microvisor::g_buddy.init(microvisor::page_view_4k::from_os_page(
                                  microvisor::g_pages.begin()),
                              microvisor::g_pages.size())
         .unwrap();
+    MICROFMT_LOG_INFO("Buddy allocator init done");
 
     s_buddy_alloc.emplace(microvisor::g_buddy);
 
@@ -160,11 +163,13 @@ int main()
 
     microvisor::g_stage1_mmu.emplace(s_buddy_alloc->ref());
 
+    MICROFMT_LOG_INFO("Initializing Stage-1 MMU...");
     microvisor::g_stage1_mmu->init().unwrap();
 
     MICROFMT_LOG_INFO("Init MMU");
 
-    microvisor::enable_hypervisor_mmu();
+    MICROFMT_LOG_INFO("Enabling Hypervisor MMU...");
+    microvisor::enable_hypervisor_mmu(regions);
 
     MICROFMT_LOG_INFO("MMU init Done");
 
@@ -172,6 +177,7 @@ int main()
     microvisor::devices::power_device g_power_dev;
     microvisor::devices::simple_console g_console_dev(0x09000000); // Host PL011 base
 
+    MICROFMT_LOG_INFO("Allocating VM...");
     auto my_vm = reloco::unique_ptr<microvisor::vm>::try_create(
                      1,                   // Passed to try_construct: VMID
                      s_buddy_alloc->ref() // Passed to try_construct: Page allocator
@@ -184,8 +190,16 @@ int main()
     using guest_addr_t = reloco::phys_addr<void, reloco::guest_phys_space, uint64_t>;
     using host_addr_t = reloco::phys_addr<void, reloco::host_phys_space, uint64_t>;
 
+    // Carve a 2 MB (512 * 4K pages => order 9) block of Host RAM out of the
+    // buddy allocator instead of hardcoding a host physical address.
+    MICROFMT_LOG_INFO("Allocating Guest RAM block...");
+    constexpr size_t guest_ram_order = 9;
+    auto guest_ram_block = microvisor::g_buddy.allocate(guest_ram_order).unwrap();
+    uint32_t hpa_ram_paddr = microvisor::g_pages.page_to_paddr(guest_ram_block.get_os_page());
+    MICROFMT_LOG_INFO("Guest RAM block @ {:#x}", hpa_ram_paddr);
+
     guest_addr_t gpa_ram{0x40000000};
-    host_addr_t hpa_ram{0x44000000};
+    host_addr_t hpa_ram{hpa_ram_paddr};
 
     uint64_t vm_ram_desc = microvisor::lpae_stage2::descriptor::make_block(
                                hpa_ram,
@@ -194,18 +208,23 @@ int main()
                                false)
                                .raw;
 
+    MICROFMT_LOG_INFO("Mapping Guest RAM into Stage-2...");
     my_vm->stage2().map_block_2m(gpa_ram, vm_ram_desc).unwrap();
+    MICROFMT_LOG_INFO("Guest RAM mapped");
 
     // Map Power Device at [0x80000000 - 0x80000FFF]
+    MICROFMT_LOG_INFO("Registering Power device...");
     my_vm->mmio().register_device(0x80000000, 0x1000, &g_power_dev);
 
     // Map Simple Console at [0x80001000 - 0x80001FFF]
+    MICROFMT_LOG_INFO("Registering Console device...");
     my_vm->mmio().register_device(0x80001000, 0x1000, &g_console_dev);
 
     // Write a tiny Guest Payload directly into the Host physical memory we assigned it.
-    // We mapped guest 0x40000000 -> host 0x44000000.
-    // Because Stage-1 maps the whole 128MB 1:1, we can write directly to 0x44000000!
-    uint32_t *guest_ram = reinterpret_cast<uint32_t *>(0x44000000);
+    // We mapped guest 0x40000000 -> the freshly-allocated `hpa_ram_paddr`.
+    // Because Stage-1 maps the whole 128MB 1:1, we can write directly there!
+    MICROFMT_LOG_INFO("Writing Guest payload...");
+    uint32_t *guest_ram = reinterpret_cast<uint32_t *>(hpa_ram_paddr);
 
     // --- Instructions ---
     guest_ram[0] = 0xE59F1028;  // 0x00: ldr  r1, [pc, #40]       -> 0x80000000 (Power Base)
@@ -236,6 +255,7 @@ int main()
     guest_ram[21] = 0x0000000A; // 0x54: "\n\0\0\0"
 
     // Flush cache lines for the 22 words (88 bytes)
+    MICROFMT_LOG_INFO("Flushing Guest payload cache lines...");
     microvisor::clear_cache(guest_ram, guest_ram + 22);
 
     // Configure VCPU to boot at the base of RAM in Supervisor mode
@@ -245,6 +265,7 @@ int main()
     MICROFMT_LOG_INFO("Entering VM {}...", my_vm->id());
 
     bool vm_running = true;
+    uint32_t vm_iteration = 0;
     while (vm_running)
     {
         // Enter Guest
@@ -252,6 +273,7 @@ int main()
 
         // Dispatch the Exit
         microvisor::trap::exit_status status = microvisor::trap::dispatch_exit(*my_vm);
+        ++vm_iteration;
 
         // Handle Dispatcher Result
         if (status == microvisor::trap::exit_status::halt)
