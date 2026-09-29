@@ -277,7 +277,28 @@ namespace microvisor::trap
     // ------------------------------------------------------------------------
     inline exit_status dispatch_exit(vm &current_vm) noexcept
     {
-         // Step 2: Parse Synchronous Trap via HSR
+        // Step 1: Check trap index
+        switch (current_vm.vcpu().exit_vector)
+        {
+        case 0x18: // IRQ
+            uint32_t cnthp_ctl = timer_get_cnthp_ctl();
+            if ((cnthp_ctl & timer::CTL_ISTATUS) != 0)
+            {
+                // Preemption timer expired
+                MICROFMT_LOG_DEBUG("[VM {}] Preemption slice expired via CNTHP.", current_vm.id());
+
+                // Disarm so it stops asserting
+                timer::disarm_preemption_timer();
+
+                // Return resume to continue or trigger scheduler loop
+                return exit_status::resume;
+            }
+
+            // Other platform IRQ (e.g. UART, VirtIO device)
+            return exit_status::resume;
+        }
+
+        // Step 2: Parse Synchronous Trap via HSR
         hsr_syndrome hsr(hyp_get_hsr());
         uint32_t ec_val = hsr.exception_class();
 

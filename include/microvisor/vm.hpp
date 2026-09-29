@@ -9,6 +9,7 @@
 #include "microvisor/lpae_manager.hpp"
 #include "microvisor/lpae_stage2.hpp"
 #include "microvisor/vcpu.hpp"
+#include <microvisor/timer.hpp>
 #include <microfmt/log/macros.hpp>
 
 extern "C"
@@ -54,9 +55,12 @@ namespace microvisor
          * @brief Executes the VM until a hardware exception forces an exit.
          * @return The hardware vector offset that caused the exit.
          */
-        uint32_t run() noexcept
+        uint32_t run(uint32_t slice_ms = 10) noexcept
         {
             m_vcpu.is_running = true;
+
+            microvisor::timer::restore_guest_timer(m_vcpu);
+            microvisor::timer::arm_preemption_timer(slice_ms);
 
             // Enable Virtualization (Stage-2 MMU Routing)
             const uint32_t old_hcr = hyp_get_hcr();
@@ -79,6 +83,8 @@ namespace microvisor
 
             // Disable Stage-2 routing so host memory operations aren't accidentally trapped
             hyp_set_hcr(old_hcr);
+            microvisor::timer::disarm_preemption_timer();
+            microvisor::timer::save_guest_timer(m_vcpu);
 
             m_vcpu.is_running = false;
 

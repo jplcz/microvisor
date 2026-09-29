@@ -22,6 +22,12 @@ namespace microvisor
         // New: Stores the exact hardware vector offset that caused the exit
         uint32_t exit_vector; // 0x44
 
+        // Virtual Timer State
+        uint64_t cntvoff;      // Offset: CNTVCT = CNTPCT - CNTVOFF
+        uint64_t cntv_cval;    // Compare value
+        uint32_t cntv_ctl;     // Bit 0: Enable, Bit 1: Mask, Bit 2: Status
+        uint64_t last_desched; // Physical timestamp when vCPU was switched out
+
         bool is_running;
 
         constexpr vcpu_context() noexcept
