@@ -167,6 +167,128 @@ namespace
                              str.view(), str.size());
         return ok;
     }
+    /**
+     * @brief Reads the AArch32 Virtual Count register (CNTVCT), a
+     * monotonically increasing 64-bit tick counter driven by the ARM
+     * Generic Timer -- readable directly from PL1 (no Hyp-mode setup
+     * required, unlike the physical counter/timer which the hypervisor
+     * gates via CNTHCTL; see include/microvisor/timer.hpp).
+     */
+    inline uint64_t read_cntvct() noexcept
+    {
+        uint32_t lo, hi;
+        asm volatile("mrrc p15, 1, %0, %1, c14" : "=r"(lo), "=r"(hi));
+        return (static_cast<uint64_t>(hi) << 32) | lo;
+    }
+
+    /**
+     * @brief Reads the Counter Frequency register (CNTFRQ) in Hz.
+     */
+    inline uint32_t read_cntfrq() noexcept
+    {
+        uint32_t freq;
+        asm volatile("mrc p15, 0, %0, c14, c0, 0" : "=r"(freq));
+        return freq;
+    }
+
+    /**
+     * @brief Busy-waits on CNTVCT until at least `target_ms` milliseconds
+     * have elapsed (per CNTFRQ), checking along the way that the counter is
+     * monotonically non-decreasing and that it doesn't need an unreasonable
+     * number of iterations to reach the target -- catching a stuck/broken
+     * timer instead of hanging forever.
+     */
+    bool test_timer_loop(microfmt::sink log)
+    {
+        constexpr uint32_t target_ms = 100;
+        constexpr uint64_t max_iterations = 200'000'000ULL;
+
+        const uint32_t freq = read_cntfrq();
+        if (freq == 0)
+        {
+            microfmt::format_to(log, "  [FAIL] CNTFRQ reads 0\r\n");
+            return false;
+        }
+
+        const uint64_t target_ticks = (static_cast<uint64_t>(freq) * target_ms) / 1000ULL;
+        const uint64_t start = read_cntvct();
+
+        uint64_t last = start;
+        uint64_t iterations = 0;
+        bool monotonic = true;
+        while (read_cntvct() - start < target_ticks)
+        {
+            const uint64_t now = read_cntvct();
+            monotonic = monotonic && now >= last;
+            last = now;
+
+            if (++iterations > max_iterations)
+            {
+                microfmt::format_to(log, "  [FAIL] timer loop: CNTVCT did not advance after {} iterations\r\n",
+                                     iterations);
+                return false;
+            }
+        }
+
+        const uint64_t end = read_cntvct();
+        const uint64_t elapsed_ticks = end - start;
+        const uint64_t elapsed_ms = (elapsed_ticks * 1000ULL) / freq;
+
+        const bool ok = monotonic && elapsed_ms >= target_ms;
+        microfmt::format_to(log, "  [{}] CNTVCT timer loop: waited {}ms (freq {}Hz, {} ticks, monotonic={})\r\n",
+                             ok ? "PASS" : "FAIL", elapsed_ms, freq, elapsed_ticks, monotonic);
+        return ok;
+    }
+
+    /**
+     * @brief Longer-running soak test: busy-waits on CNTVCT for several
+     * seconds, printing one heartbeat line per elapsed second, then checks
+     * the whole run landed close to the expected wall-clock duration.
+     * Exercises the timer continuously rather than just once, and gives a
+     * visible sign of life for longer QEMU runs.
+     */
+    bool test_heartbeat_loop(microfmt::sink log)
+    {
+        constexpr uint32_t seconds = 5;
+        constexpr uint64_t max_iterations_per_tick = 500'000'000ULL;
+
+        const uint32_t freq = read_cntfrq();
+        if (freq == 0)
+        {
+            microfmt::format_to(log, "  [FAIL] CNTFRQ reads 0\r\n");
+            return false;
+        }
+
+        const uint64_t start = read_cntvct();
+        bool ok = true;
+
+        for (uint32_t second = 1; second <= seconds; ++second)
+        {
+            const uint64_t target_ticks = static_cast<uint64_t>(freq) * second;
+
+            uint64_t iterations = 0;
+            while (read_cntvct() - start < target_ticks)
+            {
+                if (++iterations > max_iterations_per_tick)
+                {
+                    microfmt::format_to(log, "  [FAIL] heartbeat {}/{}: CNTVCT stalled\r\n", second, seconds);
+                    return false;
+                }
+            }
+
+            const uint64_t elapsed_ms = ((read_cntvct() - start) * 1000ULL) / freq;
+            microfmt::format_to(log, "  [VM 1] heartbeat {}/{} @ {}ms\r\n", second, seconds, elapsed_ms);
+        }
+
+        const uint64_t total_ms = ((read_cntvct() - start) * 1000ULL) / freq;
+        // Allow generous slack above the target since this also accounts for
+        // however long the hypervisor takes to service/reschedule the VM
+        // between our CNTVCT polls, not just raw busy-wait overhead.
+        ok = total_ms >= static_cast<uint64_t>(seconds) * 1000 && total_ms < static_cast<uint64_t>(seconds) * 5000;
+        microfmt::format_to(log, "  [{}] heartbeat loop: total {}ms for {} beats\r\n", ok ? "PASS" : "FAIL", total_ms,
+                             seconds);
+        return ok;
+    }
 } // namespace
 
 reloco::allocator_ref reloco::reloco_global_alloc::default_allocator() noexcept
@@ -217,6 +339,8 @@ int main()
     all_ok = test_vector_sum(heap.ref(), log) && all_ok;
     all_ok = test_vector_sort(heap.ref(), log) && all_ok;
     all_ok = test_string_build(heap.ref(), log) && all_ok;
+    all_ok = test_timer_loop(log) && all_ok;
+    all_ok = test_heartbeat_loop(log) && all_ok;
     microfmt::format_to(log, "[VM 1] Heap tests: {}\r\n", all_ok ? "ALL PASSED" : "FAILURE");
 
     // Ask the hypervisor to halt the VM.
