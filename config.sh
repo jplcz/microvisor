@@ -1,0 +1,5 @@
+#!/bin/sh
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-linux-gnueabi.cmake -DCMAKE_BUILD_TYPE=Debug -DMICROVISOR_MICROFMT_SOURCE_DIR=$PWD/../microfmt -DJPLCZ_MICROFMT_RELOCO_SOURCE_DIR=$PWD/../reloco
+cmake -S . -B build-minsizerel -DCMAKE_TOOLCHAIN_FILE=cmake/arm-linux-gnueabi.cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DMICROVISOR_MICROFMT_SOURCE_DIR=$PWD/../microfmt -DJPLCZ_MICROFMT_RELOCO_SOURCE_DIR=$PWD/../reloco
+
+
