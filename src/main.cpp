@@ -23,6 +23,9 @@
 #include <microvisor/trap_handler.hpp>
 #include <microvisor/cache.hpp>
 
+#include <microvisor/devices/power_device.hpp>
+#include <microvisor/devices/simple_console.hpp>
+
 extern "C"
 {
     extern uint8_t _start[]; // Now resolved to 0x40010000
@@ -133,6 +136,10 @@ int main()
 
     MICROFMT_LOG_INFO("MMU init Done");
 
+    // Static device instances
+    microvisor::devices::power_device g_power_dev;
+    microvisor::devices::simple_console g_console_dev(0x09000000); // Host PL011 base
+
     auto my_vm = reloco::unique_ptr<microvisor::vm>::try_create(
                      1,                   // Passed to try_construct: VMID
                      s_buddy_alloc->ref() // Passed to try_construct: Page allocator
@@ -156,6 +163,12 @@ int main()
                                .raw;
 
     my_vm->stage2().map_block_2m(gpa_ram, vm_ram_desc).unwrap();
+
+    // Map Power Device at [0x80000000 - 0x80000FFF]
+    my_vm->mmio().register_device(0x80000000, 0x1000, &g_power_dev);
+
+    // Map Simple Console at [0x80001000 - 0x80001FFF]
+    my_vm->mmio().register_device(0x80001000, 0x1000, &g_console_dev);
 
     // Write a tiny Guest Payload directly into the Host physical memory we assigned it.
     // We mapped guest 0x40000000 -> host 0x44000000.
@@ -213,4 +226,41 @@ int main()
                       my_vm->vcpu().pc);
 
     return 0;
+}
+
+void operator delete(void *ptr) noexcept
+{
+    (void)ptr;
+    RELOCO_ASSERT(false, "Impossible");
+}
+
+void operator delete[](void *ptr) noexcept
+{
+    (void)ptr;
+    RELOCO_ASSERT(false, "Impossible");
+}
+
+void operator delete(void *ptr, std::size_t size) noexcept
+{
+    reloco::default_allocator().deallocate(ptr, size);
+}
+
+void operator delete[](void *ptr, std::size_t size) noexcept
+{
+    reloco::default_allocator().deallocate(ptr, size);
+}
+
+void operator delete(void *ptr, std::align_val_t al) noexcept
+{
+    (void)ptr;
+    (void)al;
+    RELOCO_ASSERT(false, "Impossible");
+}
+
+void operator delete(void *ptr, std::size_t size, std::align_val_t al) noexcept
+{
+    (void)ptr;
+    (void)size;
+    (void)al;
+    reloco::default_allocator().deallocate(ptr, size);
 }

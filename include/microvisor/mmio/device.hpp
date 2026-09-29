@@ -18,7 +18,7 @@ namespace microvisor::mmio
     class device
     {
     public:
-        virtual ~device() = default;
+        virtual ~device() {}
 
         /**
          * @brief Reads from the device at a device-relative offset.
