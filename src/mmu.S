@@ -131,3 +131,37 @@ hyp_get_hpfar:
     mrc p15, 4, r0, c6, c0, 4
     bx lr
 .size hyp_get_hpfar, . - hyp_get_hpfar
+
+// -----------------------------------------------------------------------------
+// Virtualization Processor IDs (VMPIDR / VPIDR)
+// -----------------------------------------------------------------------------
+.global hyp_get_vmpidr
+.global hyp_set_vmpidr
+.global hyp_get_vpidr
+.global hyp_set_vpidr
+
+.type hyp_get_vmpidr, %function
+hyp_get_vmpidr:
+    mrc p15, 4, r0, c0, c0, 5       // Read VMPIDR
+    bx lr
+.size hyp_get_vmpidr, . - hyp_get_vmpidr
+
+.type hyp_set_vmpidr, %function
+hyp_set_vmpidr:
+    mcr p15, 4, r0, c0, c0, 5       // Write VMPIDR
+    isb
+    bx lr
+.size hyp_set_vmpidr, . - hyp_set_vmpidr
+
+.type hyp_get_vpidr, %function
+hyp_get_vpidr:
+    mrc p15, 4, r0, c0, c0, 0       // Read VPIDR
+    bx lr
+.size hyp_get_vpidr, . - hyp_get_vpidr
+
+.type hyp_set_vpidr, %function
+hyp_set_vpidr:
+    mcr p15, 4, r0, c0, c0, 0       // Write VPIDR
+    isb
+    bx lr
+.size hyp_set_vpidr, . - hyp_set_vpidr

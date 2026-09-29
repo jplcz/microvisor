@@ -44,6 +44,7 @@ namespace microvisor
 
             m_vmid = vmid;
             m_stage2_mmu = lpae_manager(page_alloc);
+            m_vcpu.init_vcpu(0);
 
             return m_stage2_mmu.init();
         }
@@ -62,6 +63,8 @@ namespace microvisor
 
             microvisor::timer::restore_guest_timer(m_vcpu);
             microvisor::timer::arm_preemption_timer(slice_ms);
+            hyp_set_vpidr(m_vcpu.vpidr);
+            hyp_set_vmpidr(m_vcpu.vmpidr);
 
             // Enable Virtualization (Stage-2 MMU Routing)
             const uint32_t old_hcr = hyp_get_hcr();

@@ -17,6 +17,9 @@ extern "C"
     void hyp_set_hsctlr(uint32_t val);
     uint32_t hyp_get_hcr();
     void hyp_set_hcr(uint32_t val);
+
+    void hyp_set_vpidr(uint32_t val);
+    void hyp_set_vmpidr(uint32_t val);
 }
 
 namespace microvisor
