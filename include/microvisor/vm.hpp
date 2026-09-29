@@ -11,6 +11,7 @@
 #include "microvisor/vcpu.hpp"
 #include <microvisor/timer.hpp>
 #include <microvisor/sysregs.hpp>
+#include <microvisor/mmu.hpp>
 #include <microfmt/log/macros.hpp>
 #include <microvisor/mmio/bus.hpp>
 
@@ -83,6 +84,8 @@ namespace microvisor
 
             uint32_t vttbr_low = static_cast<uint32_t>(vttbr_val & 0xFFFFFFFF);
             uint32_t vttbr_high = static_cast<uint32_t>(vttbr_val >> 32);
+
+            MICROFMT_LOG_INFO("VTTBR {:#x}", vttbr_val);
 
             // The World Switch
             // CPU blocks here in host context, executes guest, and returns here on exit.

@@ -267,7 +267,7 @@ namespace microvisor::trap
         uint32_t opc1 = (iss >> 14) & 0x7;
         uint32_t opc2 = (iss >> 17) & 0x7;
 
-        MICROFMT_LOG_DEBUG("[VM {}] Trapped CP15 {} p15, {}, r{}, c{}, c{}, {}",
+        MICROFMT_LOG_WARN("[VM {}] Trapped CP15 {} p15, {}, r{}, c{}, c{}, {}",
                            current_vm.id(), is_read ? "MRC" : "MCR", opc1, rt, crn, crm, opc2);
 
         // Minimal dummy emulation: reads return 0, writes are ignored

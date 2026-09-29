@@ -61,6 +61,57 @@ extern "C"
     void guest_set_tpidruro(uint32_t val);
     uint32_t guest_get_tpidrprw();
     void guest_set_tpidrprw(uint32_t val);
+
+    // Other-mode banked registers (src/banked_regs.S)
+    uint32_t guest_get_sp_usr();
+    void guest_set_sp_usr(uint32_t val);
+    uint32_t guest_get_lr_usr();
+    void guest_set_lr_usr(uint32_t val);
+
+    uint32_t guest_get_sp_svc();
+    void guest_set_sp_svc(uint32_t val);
+    uint32_t guest_get_lr_svc();
+    void guest_set_lr_svc(uint32_t val);
+    uint32_t guest_get_spsr_svc();
+    void guest_set_spsr_svc(uint32_t val);
+
+    uint32_t guest_get_sp_abt();
+    void guest_set_sp_abt(uint32_t val);
+    uint32_t guest_get_lr_abt();
+    void guest_set_lr_abt(uint32_t val);
+    uint32_t guest_get_spsr_abt();
+    void guest_set_spsr_abt(uint32_t val);
+
+    uint32_t guest_get_sp_und();
+    void guest_set_sp_und(uint32_t val);
+    uint32_t guest_get_lr_und();
+    void guest_set_lr_und(uint32_t val);
+    uint32_t guest_get_spsr_und();
+    void guest_set_spsr_und(uint32_t val);
+
+    uint32_t guest_get_sp_irq();
+    void guest_set_sp_irq(uint32_t val);
+    uint32_t guest_get_lr_irq();
+    void guest_set_lr_irq(uint32_t val);
+    uint32_t guest_get_spsr_irq();
+    void guest_set_spsr_irq(uint32_t val);
+
+    uint32_t guest_get_sp_fiq();
+    void guest_set_sp_fiq(uint32_t val);
+    uint32_t guest_get_lr_fiq();
+    void guest_set_lr_fiq(uint32_t val);
+    uint32_t guest_get_spsr_fiq();
+    void guest_set_spsr_fiq(uint32_t val);
+    uint32_t guest_get_r8_fiq();
+    void guest_set_r8_fiq(uint32_t val);
+    uint32_t guest_get_r9_fiq();
+    void guest_set_r9_fiq(uint32_t val);
+    uint32_t guest_get_r10_fiq();
+    void guest_set_r10_fiq(uint32_t val);
+    uint32_t guest_get_r11_fiq();
+    void guest_set_r11_fiq(uint32_t val);
+    uint32_t guest_get_r12_fiq();
+    void guest_set_r12_fiq(uint32_t val);
 }
 
 namespace microvisor::sysregs
@@ -93,6 +144,41 @@ namespace microvisor::sysregs
         }
 
         /**
+         * @brief Reads every tracked guest banked (other-mode) register out
+         * of hardware into @p regs.
+         */
+        inline void save_to(guest_banked_regs &regs) noexcept
+        {
+            regs.sp_usr = guest_get_sp_usr();
+            // regs.lr_usr = guest_get_lr_usr();
+
+            regs.sp_svc = guest_get_sp_svc();
+            regs.lr_svc = guest_get_lr_svc();
+            regs.spsr_svc = guest_get_spsr_svc();
+
+            regs.sp_abt = guest_get_sp_abt();
+            regs.lr_abt = guest_get_lr_abt();
+            regs.spsr_abt = guest_get_spsr_abt();
+
+            regs.sp_und = guest_get_sp_und();
+            regs.lr_und = guest_get_lr_und();
+            regs.spsr_und = guest_get_spsr_und();
+
+            regs.sp_irq = guest_get_sp_irq();
+            regs.lr_irq = guest_get_lr_irq();
+            regs.spsr_irq = guest_get_spsr_irq();
+
+            regs.sp_fiq = guest_get_sp_fiq();
+            regs.lr_fiq = guest_get_lr_fiq();
+            regs.spsr_fiq = guest_get_spsr_fiq();
+            regs.r8_fiq = guest_get_r8_fiq();
+            regs.r9_fiq = guest_get_r9_fiq();
+            regs.r10_fiq = guest_get_r10_fiq();
+            regs.r11_fiq = guest_get_r11_fiq();
+            regs.r12_fiq = guest_get_r12_fiq();
+        }
+
+        /**
          * @brief Writes every tracked guest system register in @p regs into
          * hardware.
          */
@@ -114,6 +200,41 @@ namespace microvisor::sysregs
             guest_set_tpidrurw(regs.tpidrurw);
             guest_set_tpidruro(regs.tpidruro);
             guest_set_tpidrprw(regs.tpidrprw);
+        }
+
+        /**
+         * @brief Writes every tracked guest banked (other-mode) register in
+         * @p regs into hardware.
+         */
+        inline void load_from(const guest_banked_regs &regs) noexcept
+        {
+            guest_set_sp_usr(regs.sp_usr);
+            // guest_set_lr_usr(regs.lr_usr);
+
+            guest_set_sp_svc(regs.sp_svc);
+            guest_set_lr_svc(regs.lr_svc);
+            guest_set_spsr_svc(regs.spsr_svc);
+
+            guest_set_sp_abt(regs.sp_abt);
+            guest_set_lr_abt(regs.lr_abt);
+            guest_set_spsr_abt(regs.spsr_abt);
+
+            guest_set_sp_und(regs.sp_und);
+            guest_set_lr_und(regs.lr_und);
+            guest_set_spsr_und(regs.spsr_und);
+
+            guest_set_sp_irq(regs.sp_irq);
+            guest_set_lr_irq(regs.lr_irq);
+            guest_set_spsr_irq(regs.spsr_irq);
+
+            guest_set_sp_fiq(regs.sp_fiq);
+            guest_set_lr_fiq(regs.lr_fiq);
+            guest_set_spsr_fiq(regs.spsr_fiq);
+            guest_set_r8_fiq(regs.r8_fiq);
+            guest_set_r9_fiq(regs.r9_fiq);
+            guest_set_r10_fiq(regs.r10_fiq);
+            guest_set_r11_fiq(regs.r11_fiq);
+            guest_set_r12_fiq(regs.r12_fiq);
         }
 
         // The vcpu_context whose system registers are currently live in
@@ -138,9 +259,13 @@ namespace microvisor::sysregs
             return;
 
         if (detail::g_hw_owner != nullptr)
+        {
             detail::save_to(detail::g_hw_owner->sysregs);
+            detail::save_to(detail::g_hw_owner->banked);
+        }
 
         detail::load_from(vcpu.sysregs);
+        detail::load_from(vcpu.banked);
         detail::g_hw_owner = &vcpu;
     }
 

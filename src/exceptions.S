@@ -15,9 +15,9 @@
 // Hyp Vector Table
 // Must be aligned to 32 bytes (2^5). 
 // -----------------------------------------------------------------------------
-.align 5
 .section .text.hyp_vector_table, "ax"
 .type hyp_vector_table, %function
+.align 5
 hyp_vector_table:
     b .              // 0x00: Reset (Never happens in Hyp mode)
     b hyp_trap_undef // 0x04: Undefined Instruction

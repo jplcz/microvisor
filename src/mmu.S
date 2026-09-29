@@ -165,3 +165,19 @@ hyp_set_vpidr:
     isb
     bx lr
 .size hyp_set_vpidr, . - hyp_set_vpidr
+
+// -----------------------------------------------------------------------------
+// Stage-2 / Non-secure TLB maintenance
+// -----------------------------------------------------------------------------
+.global hyp_tlbi_all_nsnh
+
+// Invalidate entire Non-secure TLB (Stage-1 and Stage-2, all VMIDs), Hyp op.
+// TLBIALLNSNH: CP15, opc1=4, CRn=c8, CRm=c7, opc2=4
+.type hyp_tlbi_all_nsnh, %function
+hyp_tlbi_all_nsnh:
+    mov r0, #0
+    mcr p15, 4, r0, c8, c7, 4
+    dsb ish
+    isb
+    bx lr
+.size hyp_tlbi_all_nsnh, . - hyp_tlbi_all_nsnh

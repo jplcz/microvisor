@@ -36,6 +36,48 @@ namespace microvisor
     };
 
     /**
+     * @brief Shadow of the guest's other-mode banked registers.
+     *
+     * `hyp_common_exit` (exceptions.S) only ever saves/restores the
+     * SP/LR of whichever mode was active at trap time (the plain `sp`/`lr`
+     * fields above). SP_usr/LR_usr and each of SVC/ABT/UND/IRQ/FIQ's own
+     * banked SP/LR/SPSR (plus FIQ's private R8-R12) are separate physical
+     * registers untouched by that path, so -- exactly like @ref
+     * guest_sysregs -- they must be tracked and switched per-VM by hand;
+     * see microvisor/sysregs.hpp.
+     */
+    struct guest_banked_regs
+    {
+        uint32_t sp_usr{0};
+        uint32_t lr_usr{0};
+
+        uint32_t sp_svc{0};
+        uint32_t lr_svc{0};
+        uint32_t spsr_svc{0};
+
+        uint32_t sp_abt{0};
+        uint32_t lr_abt{0};
+        uint32_t spsr_abt{0};
+
+        uint32_t sp_und{0};
+        uint32_t lr_und{0};
+        uint32_t spsr_und{0};
+
+        uint32_t sp_irq{0};
+        uint32_t lr_irq{0};
+        uint32_t spsr_irq{0};
+
+        uint32_t sp_fiq{0};
+        uint32_t lr_fiq{0};
+        uint32_t spsr_fiq{0};
+        uint32_t r8_fiq{0};
+        uint32_t r9_fiq{0};
+        uint32_t r10_fiq{0};
+        uint32_t r11_fiq{0};
+        uint32_t r12_fiq{0};
+    };
+
+    /**
      * @brief Holds the execution context of a Virtual CPU.
      */
     struct vcpu_context
@@ -61,6 +103,9 @@ namespace microvisor
 
         // Guest EL1 system register shadow (see microvisor/sysregs.hpp)
         guest_sysregs sysregs{};
+
+        // Guest other-mode banked register shadow (see microvisor/sysregs.hpp)
+        guest_banked_regs banked{};
 
         bool is_running;
 

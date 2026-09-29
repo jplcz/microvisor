@@ -184,95 +184,139 @@ int main()
     microvisor::devices::power_device g_power_dev;
     microvisor::devices::simple_console g_console_dev(0x09000000); // Host PL011 base
 
-    MICROFMT_LOG_INFO("Allocating VM...");
-    auto my_vm = reloco::unique_ptr<microvisor::vm>::try_create(
-                     1,                   // Passed to try_construct: VMID
-                     s_buddy_alloc->ref() // Passed to try_construct: Page allocator
-                     )
-                     .unwrap();
-
-    MICROFMT_LOG_INFO("VM {} successfully allocated!", my_vm->id());
-
     // Map Guest memory directly via operator->
     using guest_addr_t = reloco::phys_addr<void, reloco::guest_phys_space, uint64_t>;
     using host_addr_t = reloco::phys_addr<void, reloco::host_phys_space, uint64_t>;
 
-    // Carve a 2 MB (512 * 4K pages => order 9) block of Host RAM out of the
-    // buddy allocator instead of hardcoding a host physical address.
-    MICROFMT_LOG_INFO("Allocating Guest RAM block...");
-    constexpr size_t guest_ram_order = 9;
-    auto guest_ram_block = microvisor::g_buddy.allocate(guest_ram_order).unwrap();
-    uint32_t hpa_ram_paddr = microvisor::g_pages.page_to_paddr(guest_ram_block.get_os_page());
-    MICROFMT_LOG_INFO("Guest RAM block @ {:#x}", hpa_ram_paddr);
+    // Spin up two independent instances of the very same guest_example
+    // template payload. Each VM gets its own VMID (so Stage-2 TLB entries
+    // stay tagged apart -- see vm::run()'s VTTBR construction), its own
+    // Stage-2 tables, its own carved-out RAM block, and its own vcpu_context
+    // (whose guest system registers are lazily saved/restored per
+    // microvisor/sysregs.hpp whenever the round-robin loop below switches
+    // between them). The Power/Console devices are stateless enough to be
+    // shared across both VMs' MMIO buses.
+    constexpr uint8_t vm_count = 3;
+    reloco::unique_ptr<microvisor::vm> vms[vm_count];
 
-    guest_addr_t gpa_ram{0x40000000};
-    host_addr_t hpa_ram{hpa_ram_paddr};
-
-    uint64_t vm_ram_desc = microvisor::lpae_stage2::descriptor::make_block(
-                               hpa_ram,
-                               microvisor::lpae_stage2::MEMATTR_NORMAL_WB,
-                               microvisor::lpae_stage2::S2AP_RW,
-                               false)
-                               .raw;
-
-    MICROFMT_LOG_INFO("Mapping Guest RAM into Stage-2...");
-    my_vm->stage2().map_block_2m(gpa_ram, vm_ram_desc).unwrap();
-    MICROFMT_LOG_INFO("Guest RAM mapped");
-
-    // Map Power Device at [0x80000000 - 0x80000FFF]
-    MICROFMT_LOG_INFO("Registering Power device...");
-    my_vm->mmio().register_device(0x80000000, 0x1000, &g_power_dev);
-
-    // Map Simple Console at [0x80001000 - 0x80001FFF]
-    MICROFMT_LOG_INFO("Registering Console device...");
-    my_vm->mmio().register_device(0x80001000, 0x1000, &g_console_dev);
-
-    // Write the Guest Payload into the Host physical memory we assigned it.
-    // We mapped guest 0x40000000 -> the freshly-allocated `hpa_ram_paddr`.
-    // Because Stage-1 maps the whole 128MB 1:1, we can write directly there!
-    // The payload itself is `guest_example.elf` (see guest_example/), built
-    // as its own freestanding C++23 executable and embedded into this
-    // binary at link time -- see the `_binary_guest_example_bin_*` symbols
-    // declared above -- instead of a hand-encoded array of raw instructions.
-    MICROFMT_LOG_INFO("Writing Guest payload...");
-    void *guest_ram = reinterpret_cast<void *>(hpa_ram_paddr);
-    const std::size_t guest_image_size =
-        static_cast<std::size_t>(_binary_guest_example_bin_end - _binary_guest_example_bin_start);
-    memcpy(guest_ram, _binary_guest_example_bin_start, guest_image_size);
-
-    // Flush cache lines covering the copied image.
-    MICROFMT_LOG_INFO("Flushing Guest payload cache lines...");
-    auto *guest_ram_words = reinterpret_cast<uint32_t *>(guest_ram);
-    microvisor::clear_cache(guest_ram_words, guest_ram_words + (guest_image_size + 3) / 4);
-
-    // Configure VCPU to boot at the base of RAM in Supervisor mode
-    my_vm->vcpu().pc = gpa_ram.value;
-    my_vm->vcpu().cpsr = 0x000001D3; // SVC mode (0x13) + IRQ/FIQ disabled
-
-    MICROFMT_LOG_INFO("Entering VM {}...", my_vm->id());
-
-    bool vm_running = true;
-    uint32_t vm_iteration = 0;
-    while (vm_running)
+    auto setup_vm = [&](uint8_t vmid)
     {
-        // Enter Guest
-        my_vm->run();
+        MICROFMT_LOG_INFO("Allocating VM {}...", vmid);
+        auto &slot = vms[vmid - 1];
+        slot = reloco::unique_ptr<microvisor::vm>::try_create(
+                   vmid,                // Passed to try_construct: VMID
+                   s_buddy_alloc->ref() // Passed to try_construct: Page allocator
+                   )
+                   .unwrap();
 
-        // Dispatch the Exit
-        microvisor::trap::exit_status status = microvisor::trap::dispatch_exit(*my_vm);
-        ++vm_iteration;
+        MICROFMT_LOG_INFO("VM {} successfully allocated!", slot->id());
 
-        // Handle Dispatcher Result
-        if (status == microvisor::trap::exit_status::halt)
+        // Carve a 2 MB (512 * 4K pages => order 9) block of Host RAM out of
+        // the buddy allocator instead of hardcoding a host physical address.
+        MICROFMT_LOG_INFO("Allocating Guest RAM block for VM {}...", vmid);
+        constexpr size_t guest_ram_order = 9;
+        auto guest_ram_block = microvisor::g_buddy.allocate(guest_ram_order).unwrap();
+        uint32_t hpa_ram_paddr = microvisor::g_pages.page_to_paddr(guest_ram_block.get_os_page());
+        MICROFMT_LOG_INFO("VM {} Guest RAM block @ {:#x}", vmid, hpa_ram_paddr);
+
+        guest_addr_t gpa_ram{0x40000000};
+        host_addr_t hpa_ram{hpa_ram_paddr};
+
+        uint64_t vm_ram_desc = microvisor::lpae_stage2::descriptor::make_block(
+                                   hpa_ram,
+                                   microvisor::lpae_stage2::MEMATTR_NORMAL_WB,
+                                   microvisor::lpae_stage2::S2AP_RW,
+                                   false)
+                                   .raw;
+
+        MICROFMT_LOG_INFO("Mapping Guest RAM into Stage-2 for VM {}...", vmid);
+        slot->stage2().map_block_2m(gpa_ram, vm_ram_desc).unwrap();
+
+        // Map Power Device at [0x80000000 - 0x80000FFF]
+        slot->mmio().register_device(0x80000000, 0x1000, &g_power_dev);
+
+        // Map Simple Console at [0x80001000 - 0x80001FFF]
+        slot->mmio().register_device(0x80001000, 0x1000, &g_console_dev);
+
+        // Write the Guest Payload into the Host physical memory we assigned
+        // it. We mapped guest 0x40000000 -> the freshly-allocated
+        // `hpa_ram_paddr`. Because Stage-1 maps the whole 128MB 1:1, we can
+        // write directly there! The payload itself is `guest_example.elf`
+        // (see guest_example/), built as its own freestanding C++23
+        // executable and embedded into this binary at link time -- see the
+        // `_binary_guest_example_bin_*` symbols declared above -- instead of
+        // a hand-encoded array of raw instructions. Both VMs get their own
+        // fresh copy of the same blob.
+        MICROFMT_LOG_INFO("Writing Guest payload for VM {}...", vmid);
+        void *guest_ram = reinterpret_cast<void *>(hpa_ram_paddr);
+        const std::size_t guest_image_size =
+            static_cast<std::size_t>(_binary_guest_example_bin_end - _binary_guest_example_bin_start);
+        memcpy(guest_ram, _binary_guest_example_bin_start, guest_image_size);
+
+        // Flush cache lines covering the copied image.
+        auto *guest_ram_words = reinterpret_cast<uint32_t *>(guest_ram);
+        microvisor::clear_cache(guest_ram_words, guest_ram_words + (guest_image_size + 3) / 4);
+
+        // Configure VCPU to boot at the base of RAM in Supervisor mode
+        slot->vcpu().pc = gpa_ram.value;
+        slot->vcpu().cpsr = 0x000001D3; // SVC mode (0x13) + IRQ/FIQ disabled
+    };
+
+    for (uint8_t i = 1; i <= vm_count; ++i)
+        setup_vm(i);
+
+    for (uint8_t i = 0; i < vm_count; ++i)
+        MICROFMT_LOG_INFO("DEBUG VM {} pc={:#010x} cpsr={:#010x} vmid={}",
+                          vms[i]->id(), vms[i]->vcpu().pc, vms[i]->vcpu().cpsr, vms[i]->id());
+
+    MICROFMT_LOG_INFO("Entering {} VMs (round-robin, interleaved)...", vm_count);
+
+    // Round-robin scheduler: give each still-running VM one time slice in
+    // turn. Each vm::run() call arms the preemption timer for `slice_ms` and
+    // returns either because the guest yielded/was preempted (`resume`, so
+    // it stays in rotation) or halted (`halt`, so it's dropped). This is
+    // exactly the scenario that exercises the sysregs.hpp lazy save/restore
+    // switch-owner path: back-to-back slices of the *same* VM are free
+    // (owner unchanged), but every round-robin hop to the *other* VM forces
+    // a real flush + reload of the guest system registers.
+    bool vm_running[vm_count];
+    for (bool &running : vm_running)
+        running = true;
+
+    uint32_t running_count = vm_count;
+    while (running_count > 0)
+    {
+        for (uint8_t i = 0; i < vm_count; ++i)
         {
-            vm_running = false;
+            if (!vm_running[i])
+                continue;
+
+            microvisor::vm &current = *vms[i];
+
+            // Enter Guest
+            current.run();
+
+            if (i == 1)
+                MICROFMT_LOG_INFO("DEBUG VM {} exit pc={:#010x} cpsr={:#010x} exit_vector={:#x} hsr={:#010x} lr={:#010x} r0={:#010x}",
+                                   current.id(), current.vcpu().pc, current.vcpu().cpsr, current.vcpu().exit_vector, hyp_get_hsr(),
+                                   current.vcpu().lr, current.vcpu().r[0]);
+
+            // Dispatch the Exit
+            microvisor::trap::exit_status status = microvisor::trap::dispatch_exit(current);
+
+            // Handle Dispatcher Result
+            if (status == microvisor::trap::exit_status::halt)
+            {
+                MICROFMT_LOG_INFO("VM {} terminated cleanly. Final PC: {:#010x}",
+                                  current.id(),
+                                  current.vcpu().pc);
+                vm_running[i] = false;
+                --running_count;
+            }
         }
     }
 
-    // We are back!
-    MICROFMT_LOG_INFO("VM {} terminated cleanly. Final PC: {:#010x}",
-                      my_vm->id(),
-                      my_vm->vcpu().pc);
+    MICROFMT_LOG_INFO("All {} VMs terminated.", vm_count);
 
     return 0;
 }

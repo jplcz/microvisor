@@ -21,6 +21,9 @@ extern "C"
 
     void hyp_set_vpidr(uint32_t val);
     void hyp_set_vmpidr(uint32_t val);
+
+    // Invalidate entire Non-secure TLB (Stage-1 and Stage-2, all VMIDs)
+    void hyp_tlbi_all_nsnh();
 }
 
 namespace microvisor
