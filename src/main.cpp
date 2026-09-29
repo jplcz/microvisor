@@ -175,28 +175,36 @@ int main()
     // Because Stage-1 maps the whole 128MB 1:1, we can write directly to 0x44000000!
     uint32_t *guest_ram = reinterpret_cast<uint32_t *>(0x44000000);
 
-    // Assembly machine code
-    guest_ram[0] = 0xE59F1024;  // 0x00: ldr  r1, [pc, #36]       -> 0x80000000
-    guest_ram[1] = 0xE5910000;  // 0x04: ldr  r0, [r1]            -> MMIO READ (r0 = "VM01")
-    guest_ram[2] = 0xE28F2024;  // 0x08: add  r2, pc, #36         -> Pointer to msg_str (0x34)
-    guest_ram[3] = 0xE4D23001;  // 0x0C: ldrb r3, [r2], #1        -> print_loop start
-    guest_ram[4] = 0xE3530000;  // 0x10: cmp  r3, #0
-    guest_ram[5] = 0x0A000001;  // 0x14: beq  +1 (to 0x20)
-    guest_ram[6] = 0xE5813004;  // 0x18: str  r3, [r1, #4]        -> MMIO WRITE (putchar)
-    guest_ram[7] = 0xEAFFFFFA;  // 0x1C: b    -6 (to 0x0C)
-    guest_ram[8] = 0xE59F3008;  // 0x20: ldr  r3, [pc, #8]        -> 0xCAFEBABE
-    guest_ram[9] = 0xE5813000;  // 0x24: str  r3, [r1]            -> MMIO WRITE (shutdown)
-    guest_ram[10] = 0xEAFFFFFE; // 0x28: b    .                   -> Infinite loop safety
+    // --- Instructions ---
+    guest_ram[0] = 0xE59F1028;  // 0x00: ldr  r1, [pc, #40]       -> 0x80000000 (Power Base)
+    guest_ram[1] = 0xE5910000;  // 0x04: ldr  r0, [r1, #0]        -> Read Power REG_STATUS ("VM01")
+    guest_ram[2] = 0xE59F2024;  // 0x08: ldr  r2, [pc, #36]       -> 0x80001000 (Console Base)
+    guest_ram[3] = 0xE28F3028;  // 0x0C: add  r3, pc, #40         -> Pointer to msg_str (at 0x3C)
+    guest_ram[4] = 0xE4D34001;  // 0x10: ldrb r4, [r3], #1        -> print_loop start
+    guest_ram[5] = 0xE3540000;  // 0x14: cmp  r4, #0
+    guest_ram[6] = 0x0A000001;  // 0x18: beq  +1 (to 0x24)        -> Jump to shutdown
+    guest_ram[7] = 0xE5824000;  // 0x1C: str  r4, [r2, #0]        -> Write char to Console REG_DATA
+    guest_ram[8] = 0xEAFFFFFA;  // 0x20: b    -6 (to 0x10)        -> Loop back
+    guest_ram[9] = 0xE59F400C;  // 0x24: ldr  r4, [pc, #12]       -> 0xCAFEBABE
+    guest_ram[10] = 0xE5814004; // 0x28: str  r4, [r1, #4]        -> Write to Power REG_HALT
+    guest_ram[11] = 0xEAFFFFFE; // 0x2C: b    .                   -> Infinite loop safety
 
-    // Literal pool & Data (aligned)
-    guest_ram[11] = 0x80000000; // 0x2C: MMIO Base address
-    guest_ram[12] = 0xCAFEBABE; // 0x30: Magic shutdown code
-    guest_ram[13] = 0x6C6C6548; // 0x34: "Hell"
-    guest_ram[14] = 0x4D56206F; // 0x38: "o VM"
-    guest_ram[15] = 0x000A0D21; // 0x3C: "!\r\n\0"
+    // --- Literal Pool ---
+    guest_ram[12] = 0x80000000; // 0x30: Power device base
+    guest_ram[13] = 0x80001000; // 0x34: Console device base
+    guest_ram[14] = 0xCAFEBABE; // 0x38: Magic shutdown payload
 
-    // Flush D-Cache to Point of Unification and invalidate I-Cache
-    microvisor::clear_cache(guest_ram, guest_ram + 16);
+    // --- Packed String: "[VM 1] MMIO Bus Online!\r\n\0" ---
+    guest_ram[15] = 0x204D565B; // 0x3C: "[VM "
+    guest_ram[16] = 0x4D205D31; // 0x40: "1] M"
+    guest_ram[17] = 0x204F494D; // 0x44: "MIO "
+    guest_ram[18] = 0x20737542; // 0x48: "Bus "
+    guest_ram[19] = 0x696C6E4F; // 0x4C: "Onli"
+    guest_ram[20] = 0x0D21656E; // 0x50: "ne!\r"
+    guest_ram[21] = 0x0000000A; // 0x54: "\n\0\0\0"
+
+    // Flush cache lines for the 22 words (88 bytes)
+    microvisor::clear_cache(guest_ram, guest_ram + 22);
 
     // Configure VCPU to boot at the base of RAM in Supervisor mode
     my_vm->vcpu().pc = gpa_ram.value;
