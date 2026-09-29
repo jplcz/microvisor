@@ -176,54 +176,62 @@ namespace microvisor::trap
     {
         if (!hsr.isv())
         {
-            MICROFMT_LOG_ERROR("[VM {}] Stage-2 Data Abort with ISV=0 (instruction decoding required). PC: {:#010x}",
+            MICROFMT_LOG_ERROR("[VM {}] Data abort with ISV=0 at PC {:#010x}",
                                current_vm.id(), current_vm.vcpu().pc);
             return exit_status::halt;
         }
 
         uint32_t ipa = get_fault_ipa();
         uint32_t srt = hsr.srt();
+        uint32_t size = hsr.access_size();
+        bool is_write = hsr.is_write();
 
-        mmio_access access{
-            .ipa = ipa,
-            .value = 0,
-            .size = hsr.access_size(),
-            .is_write = hsr.is_write()};
-
-        if (access.is_write)
+        uint32_t val = 0;
+        if (is_write)
         {
-            uint32_t reg_val = get_vcpu_reg(current_vm.vcpu(), srt);
-            if (access.size == 1)
-                access.value = reg_val & 0xFF;
-            else if (access.size == 2)
-                access.value = reg_val & 0xFFFF;
-            else
-                access.value = reg_val;
+            val = get_vcpu_reg(current_vm.vcpu(), srt);
+            if (size == 1)
+                val &= 0xFF;
+            else if (size == 2)
+                val &= 0xFFFF;
         }
 
-        exit_status status = emulate_mmio(current_vm, access);
+        // Dispatch via the VM's MMIO router
+        mmio::status mmio_res = current_vm.mmio().dispatch(ipa, size, is_write, val);
 
-        if (status == exit_status::resume)
+        switch (mmio_res)
         {
-            if (!access.is_write)
+        case mmio::status::handled:
+            if (!is_write)
             {
-                // Apply sign extension if requested by hardware syndrome
+                // Apply sign extension if requested by hardware
                 if (hsr.sse())
                 {
-                    if (access.size == 1)
-                        access.value = static_cast<uint32_t>(static_cast<int8_t>(access.value));
-                    else if (access.size == 2)
-                        access.value = static_cast<uint32_t>(static_cast<int16_t>(access.value));
+                    if (size == 1)
+                        val = static_cast<uint32_t>(static_cast<int8_t>(val));
+                    else if (size == 2)
+                        val = static_cast<uint32_t>(static_cast<int16_t>(val));
                 }
-                set_vcpu_reg(current_vm.vcpu(), srt, access.value);
+                set_vcpu_reg(current_vm.vcpu(), srt, val);
             }
-
             advance_pc(current_vm.vcpu(), hsr);
+            return exit_status::resume;
+
+        case mmio::status::halt_vm:
+            // Intentional shutdown: step PC and stop run loop
+            advance_pc(current_vm.vcpu(), hsr);
+            return exit_status::halt;
+
+        case mmio::status::unhandled:
+        default:
+            MICROFMT_LOG_ERROR("[VM {}] Unhandled MMIO {} at IPA {:#010x} (PC: {:#010x})",
+                               current_vm.id(),
+                               is_write ? "WRITE" : "READ",
+                               ipa,
+                               current_vm.vcpu().pc);
+            return exit_status::halt;
         }
-
-        return status;
     }
-
     inline exit_status handle_hvc(vm &current_vm, hsr_syndrome hsr) noexcept
     {
         uint32_t imm16 = hsr.iss() & 0xFFFF;

@@ -11,6 +11,7 @@
 #include "microvisor/vcpu.hpp"
 #include <microvisor/timer.hpp>
 #include <microfmt/log/macros.hpp>
+#include <microvisor/mmio/bus.hpp>
 
 extern "C"
 {
@@ -92,10 +93,14 @@ namespace microvisor
             return m_vcpu.exit_vector;
         }
 
+        [[nodiscard]] mmio::bus<16> &mmio() noexcept { return m_mmio_bus; }
+        [[nodiscard]] const mmio::bus<16> &mmio() const noexcept { return m_mmio_bus; }
+
     private:
         uint8_t m_vmid{0};
         lpae_manager m_stage2_mmu{reloco::allocator_ref{}}; // Default to null allocator
         vcpu_context m_vcpu{};
+        mmio::bus<16> m_mmio_bus;
     };
 
 } // namespace microvisor
