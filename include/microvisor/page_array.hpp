@@ -5,9 +5,9 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <reloco/phys_addr.hpp>
+#include <structo/phys_addr.hpp>
 #include <reloco/error.hpp>
-#include <reloco/region_set.hpp>
+#include <structo/region_set.hpp>
 #include <microvisor/memory_map.hpp>
 #include <reloco/intrusive_c_tailq.hpp>
 

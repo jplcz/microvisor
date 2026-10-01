@@ -4,9 +4,9 @@
 #pragma once
 
 #include "microvisor/page_array.hpp"
-#include <reloco/phys_page.hpp>
+#include <structo/phys_page.hpp>
 #include <reloco/error.hpp>
-#include <reloco/buddy_allocator.hpp>
+#include <structo/buddy_allocator.hpp>
 
 namespace microvisor
 {
@@ -17,7 +17,7 @@ namespace microvisor
     /**
      * @brief Bridges microvisor's page_descriptor to reloco's os_traits_base.
      */
-    struct os_page_traits : reloco::os_traits_base<os_page_traits, page_descriptor *>
+    struct os_page_traits : structo::os_traits_base<os_page_traits, page_descriptor *>
     {
         using os_page_type = page_descriptor *;
 
@@ -81,8 +81,8 @@ namespace microvisor
     /**
      * @brief A strictly typed page view combining reloco's 4K traits with our OS traits.
      */
-    using page_view_4k = reloco::page_view<reloco::page_4k, os_page_traits>;
+    using page_view_4k = structo::page_view<structo::page_4k, os_page_traits>;
 
-    extern reloco::buddy_allocator<microvisor::page_freelist, microvisor::page_view_4k> g_buddy;
+    extern structo::buddy_allocator<microvisor::page_freelist, microvisor::page_view_4k> g_buddy;
 
 } // namespace microvisor

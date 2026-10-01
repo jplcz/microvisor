@@ -4,9 +4,9 @@
 #pragma once
 
 #include <cstdint>
-#include <reloco/phys_addr.hpp>
-#include <reloco/phys_page.hpp>
-#include <reloco/pfn_translator.hpp>
+#include <structo/phys_addr.hpp>
+#include <structo/phys_page.hpp>
+#include <structo/pfn_translator.hpp>
 
 namespace microvisor
 {
@@ -67,14 +67,14 @@ namespace microvisor
 
             // All Stage-2 targets must map to Host Physical RAM/Devices.
             template <typename PhysInt>
-            using host_pfn_4k = reloco::phys_pfn<reloco::host_phys_space, reloco::page_4k, PhysInt>;
+            using host_pfn_4k = structo::phys_pfn<structo::host_phys_space, structo::page_4k, PhysInt>;
 
             /**
              * @brief Constructs a Next-Level Table pointer.
              * Enforces that the target address belongs to the Host Physical Space.
              */
             template <typename T, typename PhysInt>
-            static constexpr descriptor make_table(reloco::phys_addr<T, reloco::host_phys_space, PhysInt> next_level_paddr) noexcept
+            static constexpr descriptor make_table(structo::phys_addr<T, structo::host_phys_space, PhysInt> next_level_paddr) noexcept
             {
                 descriptor d;
                 d.bits.type = TYPE_TABLE;
@@ -89,7 +89,7 @@ namespace microvisor
              * Enforces that the target address belongs to the Host Physical Space[cite: 8].
              */
             template <typename T, typename PhysInt>
-            static constexpr descriptor make_block(reloco::phys_addr<T, reloco::host_phys_space, PhysInt> paddr, uint64_t memattr, uint64_t s2ap, bool xn = false) noexcept
+            static constexpr descriptor make_block(structo::phys_addr<T, structo::host_phys_space, PhysInt> paddr, uint64_t memattr, uint64_t s2ap, bool xn = false) noexcept
             {
                 descriptor d;
                 d.bits.type = TYPE_BLOCK;
@@ -108,7 +108,7 @@ namespace microvisor
              * Enforces that the target address belongs to the Host Physical Space[cite: 8].
              */
             template <typename T, typename PhysInt>
-            static constexpr descriptor make_page(reloco::phys_addr<T, reloco::host_phys_space, PhysInt> paddr, uint64_t memattr, uint64_t s2ap, bool xn = false) noexcept
+            static constexpr descriptor make_page(structo::phys_addr<T, structo::host_phys_space, PhysInt> paddr, uint64_t memattr, uint64_t s2ap, bool xn = false) noexcept
             {
                 descriptor d;
                 d.bits.type = TYPE_PAGE;

@@ -8,9 +8,9 @@
 #include <reloco/error.hpp>
 #include <reloco/expected.hpp>
 #include <reloco/detail/compat.hpp>
-#include <reloco/phys_addr.hpp>
-#include <reloco/phys_page.hpp>
-#include <reloco/pfn_translator.hpp>
+#include <structo/phys_addr.hpp>
+#include <structo/phys_page.hpp>
+#include <structo/pfn_translator.hpp>
 
 namespace microvisor
 {
@@ -22,10 +22,10 @@ namespace microvisor
     {
     public:
         // Strongly typed pointer for the Host tables allocated by our buddy allocator
-        using table_addr_t = reloco::phys_addr<uint64_t, reloco::host_phys_space, uint64_t>;
+        using table_addr_t = structo::phys_addr<uint64_t, structo::host_phys_space, uint64_t>;
 
         // Page Frame Number (PFN) representation for seamless descriptor packing
-        using pfn_t = reloco::phys_pfn<reloco::host_phys_space, reloco::page_4k, uint64_t>;
+        using pfn_t = structo::phys_pfn<structo::host_phys_space, structo::page_4k, uint64_t>;
 
         constexpr explicit lpae_manager(reloco::allocator_ref alloc) noexcept
             : m_alloc(alloc) {}
@@ -50,10 +50,10 @@ namespace microvisor
          * @tparam SpaceTag The address space being mapped (e.g., guest_phys_space or host_phys_space).
          */
         template <typename T, typename SpaceTag>
-        reloco::result<void> map_block_2m(reloco::phys_addr<T, SpaceTag, uint64_t> vaddr, uint64_t raw_descriptor) noexcept
+        reloco::result<void> map_block_2m(structo::phys_addr<T, SpaceTag, uint64_t> vaddr, uint64_t raw_descriptor) noexcept
         {
             // Type-safe 2MB alignment check[cite: 7, 9]
-            if (reloco::page_math::offset<reloco::page_2m>(vaddr) != 0)
+            if (structo::page_math::offset<structo::page_2m>(vaddr) != 0)
             {
                 return reloco::unexpected(reloco::error::invalid_argument);
             }
@@ -80,10 +80,10 @@ namespace microvisor
          * @brief Injects a raw 64-bit Page Descriptor (4KB) at Level 3.
          */
         template <typename T, typename SpaceTag>
-        reloco::result<void> map_page_4k(reloco::phys_addr<T, SpaceTag, uint64_t> vaddr, uint64_t raw_descriptor) noexcept
+        reloco::result<void> map_page_4k(structo::phys_addr<T, SpaceTag, uint64_t> vaddr, uint64_t raw_descriptor) noexcept
         {
             // Type-safe 4KB alignment check[cite: 7, 9]
-            if (reloco::page_math::offset<reloco::page_4k>(vaddr) != 0)
+            if (structo::page_math::offset<structo::page_4k>(vaddr) != 0)
             {
                 return reloco::unexpected(reloco::error::invalid_argument);
             }
@@ -115,15 +115,15 @@ namespace microvisor
          * @brief Maps a contiguous range using 4KB pages safely.
          */
         template <typename T, typename SpaceTag, typename DescriptorBuilder>
-        reloco::result<void> map_range_4k(reloco::phys_addr<T, SpaceTag, uint64_t> vaddr, uint32_t size, DescriptorBuilder &&builder) noexcept
+        reloco::result<void> map_range_4k(structo::phys_addr<T, SpaceTag, uint64_t> vaddr, uint32_t size, DescriptorBuilder &&builder) noexcept
         {
             // Round down start address and round up end address securely
-            auto start_v = reloco::page_math::align_down<reloco::page_4k>(vaddr);
-            uint32_t end_val = (vaddr.value + size + reloco::page_4k::alignment_mask) & ~static_cast<uint32_t>(reloco::page_4k::alignment_mask);
+            auto start_v = structo::page_math::align_down<structo::page_4k>(vaddr);
+            uint32_t end_val = (vaddr.value + size + structo::page_4k::alignment_mask) & ~static_cast<uint32_t>(structo::page_4k::alignment_mask);
 
-            for (uint32_t current_val = start_v.value; current_val < end_val; current_val += reloco::page_4k::page_size)
+            for (uint32_t current_val = start_v.value; current_val < end_val; current_val += structo::page_4k::page_size)
             {
-                reloco::phys_addr<T, SpaceTag, uint32_t> current_v{current_val};
+                structo::phys_addr<T, SpaceTag, uint32_t> current_v{current_val};
                 uint64_t desc = builder(current_v);
 
                 auto res = map_page_4k(current_v, desc);
@@ -140,7 +140,7 @@ namespace microvisor
         reloco::result<table_addr_t> allocate_zeroed_table() noexcept
         {
             RELOCO_BEGIN_UNSAFE_BUFFER_USAGE
-            auto block_res = m_alloc.allocate(reloco::page_4k::page_size, reloco::page_4k::page_size);
+            auto block_res = m_alloc.allocate(structo::page_4k::page_size, structo::page_4k::page_size);
             if (!block_res)
                 return reloco::unexpected(block_res.error());
 
@@ -178,13 +178,13 @@ namespace microvisor
                 // We use the PFN translator to securely pack the bits.
                 pfn_t table_pfn = pfn_t::from_addr(new_table_addr);
 
-                desc = TYPE_TABLE | (table_pfn.value << reloco::page_4k::page_shift);
+                desc = TYPE_TABLE | (table_pfn.value << structo::page_4k::page_shift);
                 return new_table_addr;
             }
             else if (type == TYPE_TABLE)
             {
                 // Unpack the physical address securely by routing it through the PFN type[cite: 7].
-                uint64_t pfn_val = (desc & PADDR_MASK) >> reloco::page_4k::page_shift;
+                uint64_t pfn_val = (desc & PADDR_MASK) >> structo::page_4k::page_shift;
                 pfn_t table_pfn{pfn_val};
 
                 return table_pfn.to_addr<uint64_t>();

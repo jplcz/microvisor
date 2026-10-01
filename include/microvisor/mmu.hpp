@@ -7,7 +7,7 @@
 #include "microvisor/lpae_stage1.hpp"
 #include "microvisor/memory_map.hpp"
 #include <reloco/optional.hpp>
-#include <reloco/phys_addr.hpp>
+#include <structo/phys_addr.hpp>
 
 extern "C"
 {
@@ -45,7 +45,7 @@ namespace microvisor
         hyp_set_htcr(htcr);
 
         // Define our strongly-typed physical address for the host[cite: 8]
-        using host_addr_t = reloco::phys_addr<void, reloco::host_phys_space, uint64_t>;
+        using host_addr_t = structo::phys_addr<void, structo::host_phys_space, uint64_t>;
 
         // Map the PL011 UART (MMIO, 4KB Page, Execute Never)
         host_addr_t uart_base{0x09000000};

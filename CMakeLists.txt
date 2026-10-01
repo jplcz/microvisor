@@ -8,8 +8,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(JPLCZ_RELOCO_PORTING_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/reloco_porting")
-set(JPLCZ_MICROFMT_PORTING_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/microfmt_porting")
+set(JPLCZ_RELOCO_PORTING_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/reloco_porting" CACHE PATH "" FORCE)
+set(JPLCZ_MICROFMT_PORTING_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/microfmt_porting" CACHE PATH "" FORCE)
 
 if(NOT TARGET jplcz_microfmt::microfmt)
     set(MICROVISOR_MICROFMT_SOURCE_DIR "" CACHE PATH
@@ -51,6 +51,50 @@ if(NOT TARGET jplcz_microfmt::microfmt)
     FetchContent_MakeAvailable(jplcz_microfmt)
 endif()
 
+if(NOT TARGET jplcz_structo::structo)
+    set(MICROVISOR_STRUCTO_SOURCE_DIR "" CACHE PATH
+        "Path to a local jplcz_structo checkout to use instead of fetching it")
+
+    if(NOT MICROVISOR_STRUCTO_SOURCE_DIR AND DEFINED ENV{MICROVISOR_STRUCTO_SOURCE_DIR})
+        set(MICROVISOR_STRUCTO_SOURCE_DIR "$ENV{MICROVISOR_STRUCTO_SOURCE_DIR}" CACHE PATH
+            "Path to a local jplcz_structo checkout to use instead of fetching it" FORCE)
+    endif()
+
+    set(MICROVISOR_STRUCTO_GIT_REPOSITORY "https://github.com/jplcz/structo.git" CACHE STRING
+        "Git repository to fetch jplcz_structo from when MICROVISOR_STRUCTO_SOURCE_DIR is unset")
+    set(MICROVISOR_STRUCTO_GIT_TAG "master" CACHE STRING
+        "Git tag or commit to fetch jplcz_structo from when MICROVISOR_STRUCTO_SOURCE_DIR is unset")
+
+    include(FetchContent)
+
+    if(MICROVISOR_STRUCTO_SOURCE_DIR)
+        FetchContent_Declare(
+            jplcz_structo
+            SOURCE_DIR "${MICROVISOR_STRUCTO_SOURCE_DIR}"
+        )
+    else()
+        FetchContent_Declare(
+            jplcz_structo
+            GIT_REPOSITORY "${MICROVISOR_STRUCTO_GIT_REPOSITORY}"
+            GIT_TAG "${MICROVISOR_STRUCTO_GIT_TAG}"
+        )
+    endif()
+
+    # jplcz_structo is header-only and depends on jplcz_reloco itself; since
+    # jplcz_microfmt (above) already brought jplcz_reloco::reloco into scope,
+    # structo's own "if(NOT TARGET jplcz_reloco::reloco)" guard will reuse it
+    # as-is rather than fetching/declaring a second copy. Disable structo's
+    # own development targets (tests, header checks, strict warnings) since
+    # we are statically consuming it for a bare-metal executable.
+    set(JPLCZ_STRUCTO_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(JPLCZ_STRUCTO_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(JPLCZ_STRUCTO_BUILD_HEADER_CHECKS OFF CACHE BOOL "" FORCE)
+    set(JPLCZ_STRUCTO_ENABLE_STRICT_WARNINGS OFF CACHE BOOL "" FORCE)
+    set(JPLCZ_STRUCTO_INSTALL OFF CACHE BOOL "" FORCE)
+
+    FetchContent_MakeAvailable(jplcz_structo)
+endif()
+
 # Define the freestanding, zero-overhead environment
 set(BARE_METAL_FLAGS
     -fno-exceptions
@@ -87,6 +131,7 @@ target_link_options(microvisor.elf PRIVATE
 target_link_libraries(microvisor.elf PRIVATE
     jplcz_microfmt::microfmt
     jplcz_reloco::reloco
+    jplcz_structo::structo
     minilibc
 )
 

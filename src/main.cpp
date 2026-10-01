@@ -1,7 +1,7 @@
 #include <microfmt/hw/pl011_sink.hpp>
 #include <microfmt/microfmt.hpp>
-#include <reloco/region_set.hpp>
-#include <reloco/buddy_allocator.hpp>
+#include <structo/region_set.hpp>
+#include <structo/buddy_allocator.hpp>
 #include <reloco/default_allocator.hpp>
 #include <reloco/bucket_allocator.hpp>
 #include <reloco/spin_lock.hpp>
@@ -26,8 +26,8 @@
 #include <microvisor/devices/power_device.hpp>
 #include <microvisor/devices/simple_console.hpp>
 
-#include <reloco/fdt_reader.hpp>
-#include <reloco/fdt_memory.hpp>
+#include <structo/fdt_reader.hpp>
+#include <structo/fdt_memory.hpp>
 
 #include <microvisor/boot.hpp>
 
@@ -46,7 +46,7 @@ extern "C"
 }
 
 microvisor::page_array microvisor::g_pages;
-reloco::buddy_allocator<microvisor::page_freelist, microvisor::page_view_4k> microvisor::g_buddy;
+structo::buddy_allocator<microvisor::page_freelist, microvisor::page_view_4k> microvisor::g_buddy;
 
 void do_panic(const char *expr, const char *file, int line, const char *mesage)
 {
@@ -71,21 +71,21 @@ reloco::result<microvisor::memory_map> bootstrap_memory_regions() noexcept
 
     // Peek at just the header to learn the blob's actual declared
     // `totalsize`, rather than assuming a fixed upper bound.
-    auto size_res = reloco::fdt::fdt_reader::try_probe_size(
+    auto size_res = structo::fdt::fdt_reader::try_probe_size(
         reloco::span<const std::byte>(dtb_bytes, 64));
     if (!size_res)
         return reloco::unexpected(size_res.error());
 
     MICROFMT_LOG_INFO("DTB size {:#x}", *size_res);
 
-    auto reader_res = reloco::fdt::fdt_reader::try_create(
+    auto reader_res = structo::fdt::fdt_reader::try_create(
         reloco::span<const std::byte>(dtb_bytes, *size_res));
     if (!reader_res)
         return reloco::unexpected(reader_res.error());
 
     // Populate `total`/`free` straight from the devicetree's `/memory` and
     // `/reserved-memory` nodes instead of a hardcoded 128 MB assumption.
-    auto res = reloco::fdt::try_extract_memory(*reader_res, map.total, map.free);
+    auto res = structo::fdt::try_extract_memory(*reader_res, map.total, map.free);
     if (!res)
         return reloco::unexpected(res.error());
 
@@ -185,8 +185,8 @@ int main()
     microvisor::devices::simple_console g_console_dev(0x09000000); // Host PL011 base
 
     // Map Guest memory directly via operator->
-    using guest_addr_t = reloco::phys_addr<void, reloco::guest_phys_space, uint64_t>;
-    using host_addr_t = reloco::phys_addr<void, reloco::host_phys_space, uint64_t>;
+    using guest_addr_t = structo::phys_addr<void, structo::guest_phys_space, uint64_t>;
+    using host_addr_t = structo::phys_addr<void, structo::host_phys_space, uint64_t>;
 
     // Spin up two independent instances of the very same guest_example
     // template payload. Each VM gets its own VMID (so Stage-2 TLB entries

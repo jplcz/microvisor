@@ -21,7 +21,7 @@ namespace reloco
     template <>
     struct allocator_traits<microvisor::buddy_allocator_tag>
     {
-        using context_type = reloco::buddy_allocator<microvisor::page_freelist, microvisor::page_view_4k>;
+        using context_type = structo::buddy_allocator<microvisor::page_freelist, microvisor::page_view_4k>;
 
         /**
          * @brief Allocates a block of at least `bytes` size, aligned to `alignment`[cite: 6].
@@ -102,7 +102,7 @@ namespace microvisor
     class budy_allocator_wrap
     {
     public:
-        constexpr budy_allocator_wrap(reloco::buddy_allocator<microvisor::page_freelist, microvisor::page_view_4k> &ctx) noexcept
+        constexpr budy_allocator_wrap(structo::buddy_allocator<microvisor::page_freelist, microvisor::page_view_4k> &ctx) noexcept
             : context_(ctx) {}
 
         budy_allocator_wrap(const budy_allocator_wrap &) = delete;
@@ -118,7 +118,7 @@ namespace microvisor
         reloco::allocator_ref ref() && = delete;
 
     private:
-        reloco::buddy_allocator<microvisor::page_freelist, microvisor::page_view_4k> &context_;
+        structo::buddy_allocator<microvisor::page_freelist, microvisor::page_view_4k> &context_;
     };
 
 }
