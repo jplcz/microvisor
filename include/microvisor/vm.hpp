@@ -87,8 +87,6 @@ namespace microvisor
             uint32_t vttbr_low = static_cast<uint32_t>(vttbr.raw & 0xFFFFFFFF);
             uint32_t vttbr_high = static_cast<uint32_t>(vttbr.raw >> 32);
 
-            MICROFMT_LOG_INFO("VTTBR {:#x}", vttbr.raw);
-
             // The World Switch
             // CPU blocks here in host context, executes guest, and returns here on exit.
             hyp_enter_vm(&m_vcpu, vttbr_low, vttbr_high);

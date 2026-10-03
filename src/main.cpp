@@ -297,11 +297,11 @@ int main()
             // Enter Guest
             current.run();
 
-            if (i == 1)
-                MICROFMT_LOG_INFO("DEBUG VM {} exit pc={:#010x} cpsr={:#010x} exit_vector={:#x} hsr={:#010x} lr={:#010x} r0={:#010x}",
-                                   current.id(), current.vcpu().pc, current.vcpu().cpsr, current.vcpu().exit_vector,
-                                   structo::arch::arm::sysreg_raw::hsr::read().raw,
-                                   current.vcpu().lr, current.vcpu().r[0]);
+            // if (i == 1)
+            //     MICROFMT_LOG_INFO("DEBUG VM {} exit pc={:#010x} cpsr={:#010x} exit_vector={:#x} hsr={:#010x} lr={:#010x} r0={:#010x}",
+            //                        current.id(), current.vcpu().pc, current.vcpu().cpsr, current.vcpu().exit_vector,
+            //                        structo::arch::arm::sysreg_raw::hsr::read().raw,
+            //                        current.vcpu().lr, current.vcpu().r[0]);
 
             // Dispatch the Exit
             microvisor::trap::exit_status status = microvisor::trap::dispatch_exit(current);
