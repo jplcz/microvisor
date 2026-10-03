@@ -4,47 +4,27 @@
 #pragma once
 
 #include <cstdint>
+#include <structo/arch/arm/hyp_vm_regs.hpp>
 
 namespace microvisor
 {
 
     /**
-     * @brief Shadow copy of the guest's (non-secure PL1/EL1) architectural
-     * system registers, used by microvisor/sysregs.hpp to save/restore
-     * guest MMU/exception-vector/thread-ID state across world switches
-     * between different VMs. See sysregs.hpp for the save/restore policy;
-     * this struct is just the storage.
-     */
-    struct guest_sysregs
-    {
-        uint32_t sctlr{0};
-        uint32_t actlr{0};
-        uint32_t cpacr{0};
-        uint32_t ttbr0{0};
-        uint32_t ttbr1{0};
-        uint32_t ttbcr{0};
-        uint32_t dacr{0};
-        uint32_t mair0{0};
-        uint32_t mair1{0};
-        uint32_t amair0{0};
-        uint32_t amair1{0};
-        uint32_t vbar{0};
-        uint32_t contextidr{0};
-        uint32_t tpidrurw{0};
-        uint32_t tpidruro{0};
-        uint32_t tpidrprw{0};
-    };
-
-    /**
-     * @brief Shadow of the guest's other-mode banked registers.
+     * @brief Shadow of the guest's other-mode *banked* `SP`/`LR` (and
+     * FIQ's private `R8`-`R12`), used by microvisor/sysregs.hpp to
+     * save/restore this guest state across world switches between
+     * different VMs.
      *
      * `hyp_common_exit` (exceptions.S) only ever saves/restores the
      * SP/LR of whichever mode was active at trap time (the plain `sp`/`lr`
-     * fields above). SP_usr/LR_usr and each of SVC/ABT/UND/IRQ/FIQ's own
-     * banked SP/LR/SPSR (plus FIQ's private R8-R12) are separate physical
-     * registers untouched by that path, so -- exactly like @ref
-     * guest_sysregs -- they must be tracked and switched per-VM by hand;
-     * see microvisor/sysregs.hpp.
+     * fields of @ref vcpu_context). SP_usr/LR_usr and each of SVC/ABT/UND/
+     * IRQ/FIQ's own banked SP/LR (plus FIQ's private R8-R12) are separate
+     * physical registers untouched by that path, so they must be tracked
+     * and switched per-VM by hand -- see microvisor/sysregs.hpp.
+     *
+     * The banked `SPSR`s are *not* duplicated here: they are genuine
+     * system registers (unlike SP/LR, which are general-purpose), so they
+     * are tracked by @ref structo::arch::arm::vm_banked_spsrs instead.
      */
     struct guest_banked_regs
     {
@@ -53,28 +33,26 @@ namespace microvisor
 
         uint32_t sp_svc{0};
         uint32_t lr_svc{0};
-        uint32_t spsr_svc{0};
 
         uint32_t sp_abt{0};
         uint32_t lr_abt{0};
-        uint32_t spsr_abt{0};
 
         uint32_t sp_und{0};
         uint32_t lr_und{0};
-        uint32_t spsr_und{0};
 
         uint32_t sp_irq{0};
         uint32_t lr_irq{0};
-        uint32_t spsr_irq{0};
 
         uint32_t sp_fiq{0};
         uint32_t lr_fiq{0};
-        uint32_t spsr_fiq{0};
         uint32_t r8_fiq{0};
         uint32_t r9_fiq{0};
         uint32_t r10_fiq{0};
         uint32_t r11_fiq{0};
         uint32_t r12_fiq{0};
+
+        // Banked SPSR_svc/abt/und/irq/fiq (see structo::arch::arm::hyp_vm_regs.hpp)
+        structo::arch::arm::vm_banked_spsrs spsrs{};
     };
 
     /**
@@ -101,8 +79,12 @@ namespace microvisor
         uint32_t vmpidr{0};
         uint32_t vpidr{0};
 
-        // Guest EL1 system register shadow (see microvisor/sysregs.hpp)
-        guest_sysregs sysregs{};
+        // Guest EL1/EL0 system register shadow (see
+        // structo::arch::arm::vm_guest_state in structo/arch/arm/hyp_vm_regs.hpp
+        // and microvisor/sysregs.hpp). Covers both short- and LPAE-descriptor
+        // TTBR0/TTBR1/PAR so a guest is free to pick either MMU descriptor
+        // format for its own Stage-1 translation.
+        structo::arch::arm::vm_guest_state sysregs{};
 
         // Guest other-mode banked register shadow (see microvisor/sysregs.hpp)
         guest_banked_regs banked{};

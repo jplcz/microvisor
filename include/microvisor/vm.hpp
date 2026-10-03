@@ -14,6 +14,7 @@
 #include <microvisor/mmu.hpp>
 #include <microfmt/log/macros.hpp>
 #include <microvisor/mmio/bus.hpp>
+#include <structo/arch/arm/sysregs_generated.hpp>
 
 extern "C"
 {
@@ -67,32 +68,33 @@ namespace microvisor
             microvisor::timer::restore_guest_timer(m_vcpu);
             microvisor::sysregs::restore_guest_sysregs(m_vcpu);
             microvisor::timer::arm_preemption_timer(slice_ms);
-            hyp_set_vpidr(m_vcpu.vpidr);
-            hyp_set_vmpidr(m_vcpu.vmpidr);
+            structo::arch::arm::sysreg_raw::vpidr{m_vcpu.vpidr}.write();
+            structo::arch::arm::sysreg_raw::vmpidr{m_vcpu.vmpidr}.write();
 
             // Enable Virtualization (Stage-2 MMU Routing)
-            const uint32_t old_hcr = hyp_get_hcr();
-            uint32_t hcr = 0;
-            hcr |= (1 << 0); // VM: Enable Stage-2 translation
-            hcr |= (1 << 4); // IMO: Route physical IRQs to Hyp mode
-            hcr |= (1 << 3); // FMO: Route physical FIQs to Hyp mode
-            hyp_set_hcr(hcr);
+            const auto old_hcr = structo::arch::arm::sysreg_raw::hcr::read();
+            structo::arch::arm::sysreg_raw::hcr hcr{};
+            hcr.set_vm(true)   // VM: Enable Stage-2 translation
+                .set_imo(true) // IMO: Route physical IRQs to Hyp mode
+                .set_fmo(true); // FMO: Route physical FIQs to Hyp mode
+            hcr.write();
 
             // Format VTTBR (VMID + Stage-2 Root Page Table)
-            uint64_t vttbr_val = (static_cast<uint64_t>(m_vmid) << 48) |
-                                 (m_stage2_mmu.root_paddr().value & ~0xFFFULL);
+            structo::arch::arm::sysreg_raw::vttbr vttbr{};
+            vttbr.set_vmid(m_vmid);
+            vttbr.raw |= (m_stage2_mmu.root_paddr().value & ~0xFFFULL);
 
-            uint32_t vttbr_low = static_cast<uint32_t>(vttbr_val & 0xFFFFFFFF);
-            uint32_t vttbr_high = static_cast<uint32_t>(vttbr_val >> 32);
+            uint32_t vttbr_low = static_cast<uint32_t>(vttbr.raw & 0xFFFFFFFF);
+            uint32_t vttbr_high = static_cast<uint32_t>(vttbr.raw >> 32);
 
-            MICROFMT_LOG_INFO("VTTBR {:#x}", vttbr_val);
+            MICROFMT_LOG_INFO("VTTBR {:#x}", vttbr.raw);
 
             // The World Switch
             // CPU blocks here in host context, executes guest, and returns here on exit.
             hyp_enter_vm(&m_vcpu, vttbr_low, vttbr_high);
 
             // Disable Stage-2 routing so host memory operations aren't accidentally trapped
-            hyp_set_hcr(old_hcr);
+            old_hcr.write();
             microvisor::timer::disarm_preemption_timer();
             microvisor::timer::save_guest_timer(m_vcpu);
             microvisor::sysregs::save_guest_sysregs(m_vcpu);

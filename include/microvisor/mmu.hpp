@@ -7,21 +7,11 @@
 #include "microvisor/lpae_stage1.hpp"
 #include "microvisor/memory_map.hpp"
 #include <reloco/optional.hpp>
+#include <structo/arch/arm/sysregs_generated.hpp>
 #include <structo/phys_addr.hpp>
 
 extern "C"
 {
-    void hyp_set_htcr(uint32_t val);
-    void hyp_set_httbr(uint32_t low, uint32_t high);
-    void hyp_set_hmair0(uint32_t val);
-    uint32_t hyp_get_hsctlr();
-    void hyp_set_hsctlr(uint32_t val);
-    uint32_t hyp_get_hcr();
-    void hyp_set_hcr(uint32_t val);
-
-    void hyp_set_vpidr(uint32_t val);
-    void hyp_set_vmpidr(uint32_t val);
-
     // Invalidate entire Non-secure TLB (Stage-1 and Stage-2, all VMIDs)
     void hyp_tlbi_all_nsnh();
 }
@@ -36,13 +26,15 @@ namespace microvisor
     {
         // Configure Memory Attributes (HMAIR0)
         // Index 1: Normal Memory (WBWA), Index 0: Device Memory (nGnRE)
-        uint32_t hmair0 = (0xFF << 8) | 0x04;
-        hyp_set_hmair0(hmair0);
+        structo::arch::arm::sysreg_raw::hmair0 hmair0{};
+        hmair0.set_attr0(0x04).set_attr1(0xFF);
+        hmair0.write();
 
         // Configure Translation Control (HTCR)
         // T0SZ=0 (4GB), IRGN0=01 (WBWA), ORGN0=01 (WBWA), SH0=11 (Inner Shareable)
-        uint32_t htcr = (0 << 0) | (1 << 8) | (1 << 10) | (3 << 12);
-        hyp_set_htcr(htcr);
+        structo::arch::arm::sysreg_raw::htcr htcr{};
+        htcr.set_t0sz(0).set_irgn0(1).set_orgn0(1).set_sh0(3);
+        htcr.write();
 
         // Define our strongly-typed physical address for the host[cite: 8]
         using host_addr_t = structo::phys_addr<void, structo::host_phys_space, uint64_t>;
@@ -90,13 +82,14 @@ namespace microvisor
 
         // 6. Activate MMU & Caches
         // The root_paddr() explicitly returns a typed table_addr_t[cite: 8], preventing mix-ups.
-        hyp_set_httbr(g_stage1_mmu->root_paddr().value, 0);
+        structo::arch::arm::sysreg_raw::httbr httbr{g_stage1_mmu->root_paddr().value};
+        httbr.write();
 
-        uint32_t hsctlr = hyp_get_hsctlr();
-        hsctlr |= (1 << 0);  // M: MMU enable
-        hsctlr |= (1 << 2);  // C: Data cache enable
-        hsctlr |= (1 << 12); // I: Instruction cache enable
-        hyp_set_hsctlr(hsctlr);
+        auto hsctlr = structo::arch::arm::sysreg_raw::hsctlr::read();
+        hsctlr.set_m(true)  // MMU enable
+            .set_c(true)    // Data cache enable
+            .set_i(true);   // Instruction cache enable
+        hsctlr.write();
     }
 
 } // namespace microvisor

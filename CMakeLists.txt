@@ -8,6 +8,11 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# CACHE ... FORCE is required here, not a plain set(): reloco's/microfmt's own
+# CMakeLists.txt later declare these same variables via an unforced
+# `set(... CACHE PATH ...)`, which silently clears a plain variable of the
+# same name set earlier in this file. See README.md
+# ("Overriding cache variables") for the full explanation.
 set(JPLCZ_RELOCO_PORTING_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/reloco_porting" CACHE PATH "" FORCE)
 set(JPLCZ_MICROFMT_PORTING_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/microfmt_porting" CACHE PATH "" FORCE)
 
@@ -110,7 +115,7 @@ add_subdirectory(minilibc)
 add_subdirectory(guest_example)
 
 add_executable(microvisor.elf src/startup.S src/main.cpp src/exceptions.S src/mmu.S src/world_switch.S
-    src/timer.S src/sysregs.S src/banked_regs.S)
+    src/timer.S src/banked_regs.S)
 
 target_compile_options(microvisor.elf PRIVATE ${BARE_METAL_FLAGS})
 

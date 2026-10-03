@@ -8,14 +8,8 @@
 #include <microfmt/microfmt.hpp>
 #include <microfmt/log/macros.hpp>
 #include "microvisor/vm.hpp"
+#include <structo/arch/arm/sysregs_generated.hpp>
 
-extern "C"
-{
-    uint32_t hyp_get_hsr();
-    uint32_t hyp_get_hdfar();
-    uint32_t hyp_get_hifar();
-    uint32_t hyp_get_hpfar();
-}
 
 namespace microvisor::trap
 {
@@ -106,8 +100,8 @@ namespace microvisor::trap
 
     inline uint32_t get_fault_ipa() noexcept
     {
-        uint32_t hpfar = hyp_get_hpfar();
-        uint32_t hdfar = hyp_get_hdfar();
+        uint32_t hpfar = structo::arch::arm::sysreg_raw::hpfar::read().raw;
+        uint32_t hdfar = structo::arch::arm::sysreg_raw::hdfar::read().raw;
         if (hpfar != 0)
         {
             // HPFAR holds IPA[39:12] in bits [31:4]. Low 12 bits come from VA (HDFAR).
@@ -307,7 +301,7 @@ namespace microvisor::trap
         }
 
         // Step 2: Parse Synchronous Trap via HSR
-        hsr_syndrome hsr(hyp_get_hsr());
+        hsr_syndrome hsr(structo::arch::arm::sysreg_raw::hsr::read().raw);
         uint32_t ec_val = hsr.exception_class();
 
         switch (ec_val)
@@ -328,17 +322,17 @@ namespace microvisor::trap
 
         case ec::PREFETCH_ABT_GUEST:
             MICROFMT_LOG_ERROR("[VM {}] Stage-2 Instruction Fetch Abort at IPA: {:#010x}",
-                               current_vm.id(), hyp_get_hifar());
+                               current_vm.id(), structo::arch::arm::sysreg_raw::hifar::read().raw);
             return exit_status::halt;
 
         // Host / EL2 Fatal Panics
         case ec::DATA_ABT_HOST:
             MICROFMT_LOG_ERROR("FATAL: Hypervisor Host Data Abort at {:#010x}! PC: {:#010x}",
-                               hyp_get_hdfar(), current_vm.vcpu().pc);
+                               structo::arch::arm::sysreg_raw::hdfar::read().raw, current_vm.vcpu().pc);
             return exit_status::halt;
 
         case ec::PREFETCH_ABT_HOST:
-            MICROFMT_LOG_ERROR("FATAL: Hypervisor Host Prefetch Abort at {:#010x}!", hyp_get_hifar());
+            MICROFMT_LOG_ERROR("FATAL: Hypervisor Host Prefetch Abort at {:#010x}!", structo::arch::arm::sysreg_raw::hifar::read().raw);
             return exit_status::halt;
 
         default:
