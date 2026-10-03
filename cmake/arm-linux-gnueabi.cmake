@@ -10,8 +10,8 @@ set(CMAKE_OBJCOPY arm-linux-gnueabi-objcopy)
 # Target ARMv7-A with Virtualization Extensions (Cortex-A15 is a safe default)
 set(ARCH_FLAGS "-mcpu=cortex-a15 -marm -mfloat-abi=soft -mno-unaligned-access")
 
-set(CMAKE_C_FLAGS_INIT   "${ARCH_FLAGS} -mthumb")
-set(CMAKE_CXX_FLAGS_INIT "${ARCH_FLAGS} -mthumb")
+set(CMAKE_C_FLAGS_INIT   "${ARCH_FLAGS}")
+set(CMAKE_CXX_FLAGS_INIT "${ARCH_FLAGS}")
 set(CMAKE_ASM_FLAGS_INIT "${ARCH_FLAGS}")
 
 # Prevent CMake from trying to link a full C library during its compiler test

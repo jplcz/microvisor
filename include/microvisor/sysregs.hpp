@@ -89,7 +89,7 @@ namespace microvisor::sysregs
         inline void save_to(guest_banked_regs &regs) noexcept
         {
             regs.sp_usr = guest_get_sp_usr();
-            // regs.lr_usr = guest_get_lr_usr();
+            regs.lr_usr = guest_get_lr_usr();
 
             regs.sp_svc = guest_get_sp_svc();
             regs.lr_svc = guest_get_lr_svc();
@@ -121,7 +121,7 @@ namespace microvisor::sysregs
         inline void load_from(const guest_banked_regs &regs) noexcept
         {
             guest_set_sp_usr(regs.sp_usr);
-            // guest_set_lr_usr(regs.lr_usr);
+            guest_set_lr_usr(regs.lr_usr);
 
             guest_set_sp_svc(regs.sp_svc);
             guest_set_lr_svc(regs.lr_svc);

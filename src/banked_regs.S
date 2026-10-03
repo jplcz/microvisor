@@ -75,51 +75,84 @@
 // -----------------------------------------------------------------------------
 // USR/SYS banked SP/LR
 // -----------------------------------------------------------------------------
+.arm
+.align 2
 .type guest_get_sp_usr, %function
 guest_get_sp_usr:
-    mrs r0, sp_usr
-    bx lr
+    sub     sp, sp, #4
+    stm     sp, {sp}^       /* Store SP_usr to [sp], NO '!' */
+    nop
+    ldr     r0, [sp], #4    /* Read it into r0 and restore sp */
+    bx      lr
 .size guest_get_sp_usr, . - guest_get_sp_usr
 
+.arm
+.align 2
 .type guest_set_sp_usr, %function
 guest_set_sp_usr:
-    msr sp_usr, r0
-    bx lr
+    /* Put the new value on the current (Hyp) stack */
+    str     r0, [sp, #-4]!
+    
+    /* Load into SP_usr from [sp] WITHOUT the '!' writeback */
+    ldm     sp, {sp}^
+    nop                     /* Hazard bubble */
+    
+    /* Clean up the Hyp stack pointer manually */
+    add     sp, sp, #4
+    bx      lr
 .size guest_set_sp_usr, . - guest_set_sp_usr
 
+.arm
+.align 2
 .type guest_get_lr_usr, %function
 guest_get_lr_usr:
-    mrs r0, lr_usr
-    bx lr
+    sub     sp, sp, #4
+    stm     sp, {lr}^      /* Store LR_usr to [sp], NO '!' */
+    nop
+    ldr     r0, [sp], #4    /* Read it into r0 and restore sp */
+    bx      lr
 .size guest_get_lr_usr, . - guest_get_lr_usr
 
+.arm
+.align 2
 .type guest_set_lr_usr, %function
 guest_set_lr_usr:
-    msr lr_usr, r0
-    bx lr
+    str     r0, [sp, #-4]!
+    ldm     sp, {lr}^       /* No '!' writeback */
+    nop
+    add     sp, sp, #4
+    bx      lr
 .size guest_set_lr_usr, . - guest_set_lr_usr
 
 // -----------------------------------------------------------------------------
 // SVC banked SP/LR
 // -----------------------------------------------------------------------------
+.arm
+.align 2
 .type guest_get_sp_svc, %function
 guest_get_sp_svc:
     mrs r0, sp_svc
     bx lr
 .size guest_get_sp_svc, . - guest_get_sp_svc
 
+.arm
+.align 2
 .type guest_set_sp_svc, %function
 guest_set_sp_svc:
     msr sp_svc, r0
     bx lr
 .size guest_set_sp_svc, . - guest_set_sp_svc
 
+.arm
+.align 2
 .type guest_get_lr_svc, %function
 guest_get_lr_svc:
     mrs r0, lr_svc
     bx lr
 .size guest_get_lr_svc, . - guest_get_lr_svc
 
+.arm
+.align 2
 .type guest_set_lr_svc, %function
 guest_set_lr_svc:
     msr lr_svc, r0
@@ -129,24 +162,32 @@ guest_set_lr_svc:
 // -----------------------------------------------------------------------------
 // ABT banked SP/LR
 // -----------------------------------------------------------------------------
+.arm
+.align 2
 .type guest_get_sp_abt, %function
 guest_get_sp_abt:
     mrs r0, sp_abt
     bx lr
 .size guest_get_sp_abt, . - guest_get_sp_abt
 
+.arm
+.align 2
 .type guest_set_sp_abt, %function
 guest_set_sp_abt:
     msr sp_abt, r0
     bx lr
 .size guest_set_sp_abt, . - guest_set_sp_abt
 
+.arm
+.align 2
 .type guest_get_lr_abt, %function
 guest_get_lr_abt:
     mrs r0, lr_abt
     bx lr
 .size guest_get_lr_abt, . - guest_get_lr_abt
 
+.arm
+.align 2
 .type guest_set_lr_abt, %function
 guest_set_lr_abt:
     msr lr_abt, r0
@@ -156,24 +197,33 @@ guest_set_lr_abt:
 // -----------------------------------------------------------------------------
 // UND banked SP/LR
 // -----------------------------------------------------------------------------
+
+.arm
+.align 2
 .type guest_get_sp_und, %function
 guest_get_sp_und:
     mrs r0, sp_und
     bx lr
 .size guest_get_sp_und, . - guest_get_sp_und
 
+.arm
+.align 2
 .type guest_set_sp_und, %function
 guest_set_sp_und:
     msr sp_und, r0
     bx lr
 .size guest_set_sp_und, . - guest_set_sp_und
 
+.arm
+.align 2
 .type guest_get_lr_und, %function
 guest_get_lr_und:
     mrs r0, lr_und
     bx lr
 .size guest_get_lr_und, . - guest_get_lr_und
 
+.arm
+.align 2
 .type guest_set_lr_und, %function
 guest_set_lr_und:
     msr lr_und, r0
@@ -183,24 +233,32 @@ guest_set_lr_und:
 // -----------------------------------------------------------------------------
 // IRQ banked SP/LR
 // -----------------------------------------------------------------------------
+.arm
+.align 2
 .type guest_get_sp_irq, %function
 guest_get_sp_irq:
     mrs r0, sp_irq
     bx lr
 .size guest_get_sp_irq, . - guest_get_sp_irq
 
+.arm
+.align 2
 .type guest_set_sp_irq, %function
 guest_set_sp_irq:
     msr sp_irq, r0
     bx lr
 .size guest_set_sp_irq, . - guest_set_sp_irq
 
+.arm
+.align 2
 .type guest_get_lr_irq, %function
 guest_get_lr_irq:
     mrs r0, lr_irq
     bx lr
 .size guest_get_lr_irq, . - guest_get_lr_irq
 
+.arm
+.align 2
 .type guest_set_lr_irq, %function
 guest_set_lr_irq:
     msr lr_irq, r0
@@ -210,84 +268,112 @@ guest_set_lr_irq:
 // -----------------------------------------------------------------------------
 // FIQ banked SP/LR + R8-R12
 // -----------------------------------------------------------------------------
+.arm
+.align 2
 .type guest_get_sp_fiq, %function
 guest_get_sp_fiq:
     mrs r0, sp_fiq
     bx lr
 .size guest_get_sp_fiq, . - guest_get_sp_fiq
 
+.arm
+.align 2
 .type guest_set_sp_fiq, %function
 guest_set_sp_fiq:
     msr sp_fiq, r0
     bx lr
 .size guest_set_sp_fiq, . - guest_set_sp_fiq
 
+.arm
+.align 2
 .type guest_get_lr_fiq, %function
 guest_get_lr_fiq:
     mrs r0, lr_fiq
     bx lr
 .size guest_get_lr_fiq, . - guest_get_lr_fiq
 
+.arm
+.align 2
 .type guest_set_lr_fiq, %function
 guest_set_lr_fiq:
     msr lr_fiq, r0
     bx lr
 .size guest_set_lr_fiq, . - guest_set_lr_fiq
 
+.arm
+.align 2
 .type guest_get_r8_fiq, %function
 guest_get_r8_fiq:
     mrs r0, r8_fiq
     bx lr
 .size guest_get_r8_fiq, . - guest_get_r8_fiq
 
+.arm
+.align 2
 .type guest_set_r8_fiq, %function
 guest_set_r8_fiq:
     msr r8_fiq, r0
     bx lr
 .size guest_set_r8_fiq, . - guest_set_r8_fiq
 
+.arm
+.align 2
 .type guest_get_r9_fiq, %function
 guest_get_r9_fiq:
     mrs r0, r9_fiq
     bx lr
 .size guest_get_r9_fiq, . - guest_get_r9_fiq
 
+.arm
+.align 2
 .type guest_set_r9_fiq, %function
 guest_set_r9_fiq:
     msr r9_fiq, r0
     bx lr
 .size guest_set_r9_fiq, . - guest_set_r9_fiq
 
+.arm
+.align 2
 .type guest_get_r10_fiq, %function
 guest_get_r10_fiq:
     mrs r0, r10_fiq
     bx lr
 .size guest_get_r10_fiq, . - guest_get_r10_fiq
 
+.arm
+.align 2
 .type guest_set_r10_fiq, %function
 guest_set_r10_fiq:
     msr r10_fiq, r0
     bx lr
 .size guest_set_r10_fiq, . - guest_set_r10_fiq
 
+.arm
+.align 2
 .type guest_get_r11_fiq, %function
 guest_get_r11_fiq:
     mrs r0, r11_fiq
     bx lr
 .size guest_get_r11_fiq, . - guest_get_r11_fiq
 
+.arm
+.align 2
 .type guest_set_r11_fiq, %function
 guest_set_r11_fiq:
     msr r11_fiq, r0
     bx lr
 .size guest_set_r11_fiq, . - guest_set_r11_fiq
 
+.arm
+.align 2
 .type guest_get_r12_fiq, %function
 guest_get_r12_fiq:
     mrs r0, r12_fiq
     bx lr
 .size guest_get_r12_fiq, . - guest_get_r12_fiq
 
+.arm
+.align 2
 .type guest_set_r12_fiq, %function
 guest_set_r12_fiq:
     msr r12_fiq, r0
